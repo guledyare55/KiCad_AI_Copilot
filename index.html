@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KiCad AI Copilot — EDA Design Generator</title>
+  <meta name="description" content="Convert natural language electronics requirements into KiCad-ready PCB designs. AI-powered schematic generation, component selection, and PCB layout planning." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Animated background -->
+  <div class="bg-grid"></div>
+  <div class="bg-glow glow-1"></div>
+  <div class="bg-glow glow-2"></div>
+  <div class="bg-glow glow-3"></div>
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="logo">
+        <div class="logo-icon">
+          <svg viewBox="0 0 32 32" fill="none">
+            <rect x="2" y="2" width="28" height="28" rx="6" fill="url(#logoGrad)"/>
+            <path d="M8 16h4l2-4 4 8 2-4h4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="8" cy="16" r="1.5" fill="#7FFFD4"/>
+            <circle cx="24" cy="16" r="1.5" fill="#7FFFD4"/>
+            <defs>
+              <linearGradient id="logoGrad" x1="0" y1="0" x2="32" y2="32">
+                <stop offset="0%" stop-color="#1a1f3a"/>
+                <stop offset="100%" stop-color="#0d1117"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <div class="logo-text">
+          <span class="logo-name">KiCad AI</span>
+          <span class="logo-sub">Copilot</span>
+        </div>
+      </div>
+      <nav class="header-nav">
+        <a href="#" class="nav-link active" id="nav-design">Design</a>
+        <a href="#" class="nav-link" id="nav-examples">Examples</a>
+        <a href="#" class="nav-link" id="nav-docs">Docs</a>
+      </nav>
+      <div class="header-badges">
+        <span class="badge badge-green">KiCad v7+</span>
+        <span class="badge badge-blue">JLCPCB Ready</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main App -->
+  <main class="app-main">
+
+    <!-- Left Panel: Input -->
+    <section class="panel panel-input" id="panel-input">
+      <div class="panel-header">
+        <h1>PCB Design Generator</h1>
+        <p class="panel-subtitle">Describe your electronics project in natural language</p>
+      </div>
+
+      <!-- Mode Toggle -->
+      <div class="mode-toggle" id="mode-toggle">
+        <button class="mode-btn active" id="mode-natural" data-mode="natural">
+          <svg viewBox="0 0 20 20" fill="currentColor"><path d="M2 5a2 2 0 012-2h12a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V5zm3 1h10v8H5V6zm2 2v4h6V8H7z"/></svg>
+          Natural Language
+        </button>
+        <button class="mode-btn" id="mode-json" data-mode="json">
+          <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z"/></svg>
+          JSON Input
+        </button>
+      </div>
+
+      <!-- Natural Language Mode -->
+      <div class="input-section" id="natural-mode">
+        <div class="form-group">
+          <label class="form-label" for="project-name">Project Name</label>
+          <input type="text" id="project-name" class="form-input" placeholder="e.g. Bluetooth Sensor Node" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="project-desc">Project Description</label>
+          <textarea id="project-desc" class="form-textarea" rows="4"
+            placeholder="Describe what your PCB should do. e.g. &#10;&#10;'A small Bluetooth beacon using nRF52810, powered by CR2032, with 2 buttons and an LED for status. Must be as small as possible for commercial production.'"></textarea>
+        </div>
+        <div class="constraint-grid">
+          <div class="form-group">
+            <label class="form-label">Board Size</label>
+            <div class="select-group" id="size-select">
+              <button class="select-opt active" data-val="smallest">Smallest</button>
+              <button class="select-opt" data-val="small">Small</button>
+              <button class="select-opt" data-val="medium">Medium</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Power Source</label>
+            <div class="select-group" id="power-select">
+              <button class="select-opt active" data-val="battery">Battery</button>
+              <button class="select-opt" data-val="usb">USB</button>
+              <button class="select-opt" data-val="mixed">Mixed</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Cost Target</label>
+            <div class="select-group" id="cost-select">
+              <button class="select-opt" data-val="low">Low</button>
+              <button class="select-opt active" data-val="commercial">Commercial</button>
+              <button class="select-opt" data-val="medium">Medium</button>
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Components (optional override)</label>
+          <input type="text" id="components-input" class="form-input" placeholder="e.g. nRF52810, CR2032, LED, BUTTON x2" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Additional Notes</label>
+          <input type="text" id="notes-input" class="form-input" placeholder="e.g. JLCPCB basic parts only, double sided, impedance controlled..." />
+        </div>
+      </div>
+
+      <!-- JSON Mode -->
+      <div class="input-section hidden" id="json-mode">
+        <div class="form-group">
+          <label class="form-label">JSON Input</label>
+          <textarea id="json-input" class="form-textarea code-area" rows="18" spellcheck="false">{
+  "project_name": "Bluetooth Shutter",
+  "description": "Bluetooth camera shutter using nRF52810, CR2032 battery, one LED and two buttons",
+  "constraints": {
+    "size": "smallest",
+    "cost": "commercial",
+    "power": "battery",
+    "notes": "JLCPCB basic parts preferred"
+  },
+  "components": ["nRF52810", "CR2032", "LED", "BUTTON x2"],
+  "preferences": {
+    "footprint_standard": "0402",
+    "programming_header": "SWD"
+  }
+}</textarea>
+        </div>
+      </div>
+
+      <!-- Quick Examples -->
+      <div class="examples-strip" id="example-strip">
+        <span class="examples-label">Quick start:</span>
+        <button class="example-chip" id="ex-ble">BLE Sensor</button>
+        <button class="example-chip" id="ex-lora">LoRa Node</button>
+        <button class="example-chip" id="ex-motor">Motor Driver</button>
+        <button class="example-chip" id="ex-usb">USB HID</button>
+      </div>
+
+      <!-- Generate Button -->
+      <button class="generate-btn" id="generate-btn">
+        <span class="btn-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5,3 19,12 5,21"/>
+          </svg>
+        </span>
+        <span class="btn-text">Generate KiCad Design</span>
+        <span class="btn-spinner hidden" id="btn-spinner">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <circle cx="12" cy="12" r="10" stroke-opacity="0.3"/>
+            <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
+          </svg>
+        </span>
+      </button>
+
+      <!-- Stats Bar -->
+      <div class="stats-bar" id="stats-bar">
+        <div class="stat-item">
+          <span class="stat-val" id="stat-components">—</span>
+          <span class="stat-label">Components</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-val" id="stat-nets">—</span>
+          <span class="stat-label">Nets</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-val" id="stat-rules">—</span>
+          <span class="stat-label">PCB Rules</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-val" id="stat-checks">—</span>
+          <span class="stat-label">Checks</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Panel: Output -->
+    <section class="panel panel-output" id="panel-output">
+
+      <!-- Placeholder State -->
+      <div class="output-placeholder" id="output-placeholder">
+        <div class="placeholder-icon">
+          <svg viewBox="0 0 80 80" fill="none">
+            <circle cx="40" cy="40" r="38" stroke="url(#circGrad)" stroke-width="2" stroke-dasharray="6 4"/>
+            <rect x="20" y="28" width="40" height="26" rx="4" stroke="url(#circGrad)" stroke-width="1.5"/>
+            <circle cx="28" cy="36" r="3" fill="#7FFFD4" fill-opacity="0.6"/>
+            <circle cx="52" cy="44" r="3" fill="#7FFFD4" fill-opacity="0.6"/>
+            <path d="M28 36 L40 30 L52 44" stroke="#4fc3f7" stroke-width="1.5" stroke-dasharray="3 2"/>
+            <path d="M31 42 L45 38 L52 44" stroke="#7FFFD4" stroke-width="1.5" stroke-dasharray="3 2"/>
+            <defs>
+              <linearGradient id="circGrad" x1="0" y1="0" x2="80" y2="80" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#4fc3f7"/>
+                <stop offset="100%" stop-color="#7FFFD4"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <h2>Ready to Design</h2>
+        <p>Fill in your project details and click <strong>Generate</strong> to create a complete KiCad-ready PCB design with components, nets, footprints, and placement rules.</p>
+        <div class="feature-grid">
+          <div class="feature-item">
+            <span class="fi-icon">⚡</span>
+            <span>Auto decoupling caps</span>
+          </div>
+          <div class="feature-item">
+            <span class="fi-icon">🔌</span>
+            <span>Net connections</span>
+          </div>
+          <div class="feature-item">
+            <span class="fi-icon">📐</span>
+            <span>Footprint mapping</span>
+          </div>
+          <div class="feature-item">
+            <span class="fi-icon">📋</span>
+            <span>PCB rules</span>
+          </div>
+          <div class="feature-item">
+            <span class="fi-icon">🔒</span>
+            <span>RF keepouts</span>
+          </div>
+          <div class="feature-item">
+            <span class="fi-icon">✅</span>
+            <span>Validation checks</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Output Tabs -->
+      <div class="output-content hidden" id="output-content">
+
+        <div class="output-header">
+          <div class="output-title">
+            <h2 id="output-project-name">Design Output</h2>
+            <p id="output-summary"></p>
+          </div>
+          <div class="output-actions">
+            <button class="action-btn" id="btn-copy-json" title="Copy JSON">
+              <svg viewBox="0 0 20 20" fill="currentColor"><path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z"/><path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z"/></svg>
+              Copy JSON
+            </button>
+            <button class="action-btn action-btn-primary" id="btn-download" title="Download JSON">
+              <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z"/></svg>
+              Export JSON
+            </button>
+          </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="output-tabs">
+          <button class="tab-btn active" data-tab="overview" id="tab-overview">Overview</button>
+          <button class="tab-btn" data-tab="components" id="tab-components">Components</button>
+          <button class="tab-btn" data-tab="nets" id="tab-nets">Nets</button>
+          <button class="tab-btn" data-tab="placement" id="tab-placement">PCB Rules</button>
+          <button class="tab-btn" data-tab="raw" id="tab-raw">Raw JSON</button>
+        </div>
+
+        <!-- Tab: Overview -->
+        <div class="tab-content active" id="tab-content-overview">
+          <div class="overview-grid" id="overview-grid"></div>
+          <div class="validation-panel" id="validation-panel"></div>
+        </div>
+
+        <!-- Tab: Components -->
+        <div class="tab-content" id="tab-content-components">
+          <div class="components-table-wrap">
+            <table class="data-table" id="components-table">
+              <thead>
+                <tr>
+                  <th>Ref</th>
+                  <th>Name</th>
+                  <th>Type</th>
+                  <th>Value</th>
+                  <th>Footprint</th>
+                  <th>Reason</th>
+                </tr>
+              </thead>
+              <tbody id="components-tbody"></tbody>
+            </table>
+          </div>
+          <div class="auto-added-section" id="auto-added-section">
+            <h3 class="section-title">
+              <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z"/></svg>
+              Auto-Added Support Circuitry
+            </h3>
+            <div class="auto-added-grid" id="auto-added-grid"></div>
+          </div>
+        </div>
+
+        <!-- Tab: Nets -->
+        <div class="tab-content" id="tab-content-nets">
+          <div class="power-tree-card" id="power-tree-card"></div>
+          <div class="nets-list" id="nets-list"></div>
+        </div>
+
+        <!-- Tab: PCB Rules -->
+        <div class="tab-content" id="tab-content-placement">
+          <div class="rules-grid" id="rules-grid"></div>
+          <div class="rf-rules-section" id="rf-rules-section"></div>
+        </div>
+
+        <!-- Tab: Raw JSON -->
+        <div class="tab-content" id="tab-content-raw">
+          <div class="raw-json-header">
+            <span class="raw-label">KiCad AI Copilot — Structured Output</span>
+            <button class="raw-copy-btn" id="raw-copy-btn">Copy</button>
+          </div>
+          <pre class="json-viewer" id="json-viewer"></pre>
+        </div>
+      </div>
+
+      <!-- Loading State -->
+      <div class="output-loading hidden" id="output-loading">
+        <div class="loading-animation">
+          <div class="pcb-loader">
+            <div class="pcb-trace trace-h"></div>
+            <div class="pcb-trace trace-v"></div>
+            <div class="pcb-node node-1"></div>
+            <div class="pcb-node node-2"></div>
+            <div class="pcb-node node-3"></div>
+            <div class="pcb-node node-4"></div>
+          </div>
+        </div>
+        <h3>Generating Design...</h3>
+        <div class="loading-steps" id="loading-steps">
+          <div class="loading-step active" id="lstep-1">Analyzing requirements</div>
+          <div class="loading-step" id="lstep-2">Selecting components</div>
+          <div class="loading-step" id="lstep-3">Adding support circuitry</div>
+          <div class="loading-step" id="lstep-4">Mapping nets</div>
+          <div class="loading-step" id="lstep-5">Assigning footprints</div>
+          <div class="loading-step" id="lstep-6">Generating PCB rules</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Toast Notification -->
+  <div class="toast" id="toast"></div>
+
+  <script src="engine.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

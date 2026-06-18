@@ -1,0 +1,36 @@
+{
+  "$schema": "https://go.kicad.org/pcm/schemas/v1",
+  "identifier": "com.kicad-ai-copilot.plugin",
+  "name": "KiCad AI Copilot",
+  "description": "Convert natural language electronics requirements into KiCad PCB designs. Automatically generates components, nets, footprints, decoupling caps, RF rules, and PCB placement constraints.",
+  "description_full": "KiCad AI Copilot is an EDA design assistant that converts natural language product requirements into fully structured KiCad 10+ compatible designs. Features include: automatic support circuitry (decoupling capacitors, pull-up resistors, reset circuits, programming headers), RF antenna matching networks, USB-C CC resistors, battery protection diodes, I2C bus pull-ups, PCB placement rules, and BOM generation for JLCPCB/LCSC.",
+  "type": "plugin",
+  "author": {
+    "name": "KiCad AI Copilot",
+    "contact": {
+      "web": "https://github.com/kicad-ai-copilot"
+    }
+  },
+  "maintainer": {
+    "name": "KiCad AI Copilot",
+    "contact": {
+      "web": "https://github.com/kicad-ai-copilot"
+    }
+  },
+  "license": "MIT",
+  "resources": {
+    "homepage": "https://github.com/kicad-ai-copilot"
+  },
+  "tags": ["eda", "ai", "automation", "schematic", "pcb", "ble", "lora", "bom"],
+  "versions": [
+    {
+      "version": "1.0.0",
+      "status": "stable",
+      "kicad_version": "7.0",
+      "download_url": "",
+      "download_sha256": "",
+      "download_size": 0,
+      "install_size": 0
+    }
+  ]
+}
