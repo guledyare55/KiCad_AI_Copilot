@@ -1089,17 +1089,17 @@ function generateSchematicSExpression(design) {
       isPassive = true;
     } else {
       // Create an inline generic IC symbol for sensors/MCUs to avoid missing library errors
-      const icLibId = \`IC_\${c.name.replace(/[^a-zA-Z0-9]/g, '')}\`;
-      libId = \`CopilotLocal:\${icLibId}\`;
+      const icLibId = `IC_${c.name.replace(/[^a-zA-Z0-9]/g, '')}`;
+      libId = `CopilotLocal:${icLibId}`;
       
-      sch += \`  (lib_symbols
-    (symbol "\${libId}" (pin_names (offset 1.016)) (in_bom yes) (on_board yes)
+      sch += `  (lib_symbols
+    (symbol "${libId}" (pin_names (offset 1.016)) (in_bom yes) (on_board yes)
       (property "Reference" "U" (at 0 7.62 0) (effects (font (size 1.27 1.27))))
-      (property "Value" "\${c.name}" (at 0 -7.62 0) (effects (font (size 1.27 1.27))))
-      (symbol "\${icLibId}_0_1"
+      (property "Value" "${c.name}" (at 0 -7.62 0) (effects (font (size 1.27 1.27))))
+      (symbol "${icLibId}_0_1"
         (rectangle (start -10.16 5.08) (end 10.16 -5.08) (stroke (width 0.254) (type default)) (fill (type background)))
       )
-      (symbol "\${icLibId}_1_1"
+      (symbol "${icLibId}_1_1"
         (pin input line (at -12.7 2.54 0) (length 2.54) (name "PIN1" (effects (font (size 1.27 1.27)))) (number "1"))
         (pin output line (at 12.7 2.54 180) (length 2.54) (name "PIN2" (effects (font (size 1.27 1.27)))) (number "2"))
         (pin power_in line (at 0 7.62 270) (length 2.54) (name "VCC" (effects (font (size 1.27 1.27)))) (number "3"))
@@ -1107,27 +1107,27 @@ function generateSchematicSExpression(design) {
       )
     )
   )
-\`;
+`;
     }
 
     // Place the symbol instance
     const ref = c.ref_prefix + compId;
-    sch += \`  (symbol (lib_id "\${libId}") (at \${posX} \${posY} 0) (unit 1)
+    sch += `  (symbol (lib_id "${libId}") (at ${posX} ${posY} 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no)
-    (uuid "\${Math.random().toString(36).substring(2,10)}-copilot-sch")
-    (property "Reference" "\${ref}" (at \${posX} \${posY-5} 0))
-    (property "Value" "\${c.value || c.name}" (at \${posX} \${posY+5} 0))
-    (property "Footprint" "\${c.footprint || ''}" (at \${posX} \${posY+7} 0) (effects (font (size 1.27 1.27)) hide))
+    (uuid "${Math.random().toString(36).substring(2,10)}-copilot-sch")
+    (property "Reference" "${ref}" (at ${posX} ${posY-5} 0))
+    (property "Value" "${c.value || c.name}" (at ${posX} ${posY+5} 0))
+    (property "Footprint" "${c.footprint || ''}" (at ${posX} ${posY+7} 0) (effects (font (size 1.27 1.27)) hide))
   )
-\`;
+`;
     
     // Add global labels representing nets for this component (Mockup)
     // We attach a label right next to it.
-    sch += \`  (global_label "GND" (shape input) (at \${posX-2.54} \${posY+10} 180)
-    (uuid "\${Math.random().toString(36).substring(2,10)}-lbl")
-    (property "Intersheetrefs" "\${ref}" (at \${posX-5} \${posY+10} 0) (effects (font (size 1.27 1.27)) hide))
+    sch += `  (global_label "GND" (shape input) (at ${posX-2.54} ${posY+10} 180)
+    (uuid "${Math.random().toString(36).substring(2,10)}-lbl")
+    (property "Intersheetrefs" "${ref}" (at ${posX-5} ${posY+10} 0) (effects (font (size 1.27 1.27)) hide))
   )
-\`;
+`;
 
     posX += 40;
     if (posX > 250) {
@@ -1140,6 +1140,7 @@ function generateSchematicSExpression(design) {
   sch += `)\n`;
   return sch;
 }
+
 
 // ═══════════════════════════════════════════════════════════
 // FEATURE 6: THERMAL HEATMAP RENDERER
