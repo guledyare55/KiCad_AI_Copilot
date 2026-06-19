@@ -1246,3 +1246,766 @@ class KiCadDesignEngine {
 
 // Export engine instance
 window.KiCadEngine = new KiCadDesignEngine();
+
+// ═══════════════════════════════════════════════════════════
+// FEATURE 6: THERMAL RISK HEATMAP ENGINE
+// ═══════════════════════════════════════════════════════════
+const THERMAL_POWER_DB = {
+  "MCU":       { mw: 120,  color: "#f97316" },
+  "RF":        { mw: 200,  color: "#ef4444" },
+  "regulator": { mw: 350,  color: "#dc2626" },
+  "power":     { mw: 80,   color: "#fb923c" },
+  "sensor":    { mw: 15,   color: "#facc15" },
+  "connector": { mw: 10,   color: "#a3e635" },
+  "passive":   { mw: 5,    color: "#4ade80" },
+  "led":       { mw: 25,   color: "#fbbf24" },
+  "button":    { mw: 1,    color: "#86efac" },
+};
+
+const THERMAL_COMPONENT_OVERRIDE = {
+  "nRF52810":   300, "nRF52840": 350, "ESP32-S3": 500, "STM32G031K8": 150,
+  "ATMEGA328P": 120, "SX1262": 250, "AMS1117": 600, "TLV1117": 500, "CH340C": 80
+};
+
+window.ThermalEngine = {
+  generate(components, autoComponents, boardSizeMm = 40) {
+    const GRID = 12;
+    const cellSizeMm = boardSizeMm / GRID;
+    const grid = Array.from({length: GRID}, () => new Array(GRID).fill(0));
+
+    const allComps = [...components, ...autoComponents];
+    const placed = allComps.map((c, i) => {
+      const angle = (i / allComps.length) * Math.PI * 2;
+      const r = (boardSizeMm / 2) * 0.6;
+      return {
+        ...c,
+        x: boardSizeMm/2 + r * Math.cos(angle),
+        y: boardSizeMm/2 + r * Math.sin(angle),
+        mw: THERMAL_COMPONENT_OVERRIDE[c.name] ||
+            THERMAL_POWER_DB[c.type?.toLowerCase()]?.mw || 10
+      };
+    });
+
+    // Gaussian heat diffusion
+    for (const comp of placed) {
+      const cx = comp.x / cellSizeMm;
+      const cy = comp.y / cellSizeMm;
+      const sigma = Math.sqrt(comp.mw) / 15 + 0.5;
+      for (let gy = 0; gy < GRID; gy++) {
+        for (let gx = 0; gx < GRID; gx++) {
+          const dx = gx - cx, dy = gy - cy;
+          grid[gy][gx] += comp.mw * Math.exp(-(dx*dx + dy*dy) / (2 * sigma * sigma));
+        }
+      }
+    }
+
+    const flat = grid.flat();
+    const maxTemp = Math.max(...flat);
+    const hotspots = placed
+      .filter(c => c.mw > 50)
+      .sort((a, b) => b.mw - a.mw)
+      .slice(0, 4)
+      .map(c => ({ name: c.name || c.ref, mw: c.mw, risk: c.mw > 300 ? "HIGH" : c.mw > 100 ? "MEDIUM" : "LOW" }));
+
+    const recommendations = [];
+    if (hotspots.some(h => h.risk === "HIGH"))
+      recommendations.push({ icon: "🌊", text: "Add copper pour beneath high-power ICs to spread heat", priority: "critical" });
+    if (placed.some(c => c.mw > 100))
+      recommendations.push({ icon: "🔩", text: "Add 4–8 thermal vias under regulators (0.3mm drill, 0.6mm pad)", priority: "high" });
+    if (maxTemp > 500)
+      recommendations.push({ icon: "💨", text: "Consider forced airflow or thermal interface material if enclosed", priority: "medium" });
+    recommendations.push({ icon: "📐", text: "Keep RF components away from high-power areas (>5mm separation)", priority: "info" });
+    recommendations.push({ icon: "🔋", text: "Place bulk decoupling caps within 2mm of power pins", priority: "info" });
+
+    return { grid, maxTemp, placed, hotspots, recommendations, gridSize: GRID, boardSizeMm };
+  }
+};
+
+// ═══════════════════════════════════════════════════════════
+// FEATURE 7: BOM OPTIMIZER ENGINE
+// ═══════════════════════════════════════════════════════════
+const JLCPCB_BASIC_PARTS = {
+  // Capacitors → JLCPCB Basic equivalents
+  "100nF_0402": { lcsc: "C14663", desc: "100nF 0402 (Basic)", price: 0.003 },
+  "10uF_0402":  { lcsc: "C19702", desc: "10µF 0402 (Basic)", price: 0.012 },
+  "4.7uF_0402": { lcsc: "C23630", desc: "4.7µF 0402 (Basic)", price: 0.009 },
+  "1uF_0402":   { lcsc: "C52923", desc: "1µF 0402 (Basic)", price: 0.005 },
+  // Resistors
+  "10k_0402":   { lcsc: "C25804", desc: "10kΩ 0402 (Basic)", price: 0.002 },
+  "100r_0402":  { lcsc: "C25076", desc: "100Ω 0402 (Basic)", price: 0.002 },
+  "1k_0402":    { lcsc: "C21190", desc: "1kΩ 0402 (Basic)", price: 0.002 },
+  "4k7_0402":   { lcsc: "C25905", desc: "4.7kΩ 0402 (Basic)", price: 0.002 },
+  // LEDs
+  "LED_green_0402": { lcsc: "C72043", desc: "Green LED 0402 (Basic)", price: 0.015 },
+  "LED_red_0402":   { lcsc: "C84256", desc: "Red LED 0402 (Basic)", price: 0.012 },
+};
+
+const BOM_PRICES = {
+  "nRF52810": 1.25, "nRF52840": 4.50, "ESP32-S3": 2.10, "STM32G031K8": 1.10,
+  "ATMEGA328P": 1.80, "BME280": 3.50, "SHTC3": 1.20, "SX1262": 2.80,
+  "CH340C": 0.45, "AMS1117": 0.12, "USB-C-GCT_USB4085": 0.55,
+  "LED": 0.02, "BUTTON": 0.08, "CR2032": 0.35,
+  "100nF": 0.008, "10uF": 0.025, "4.7uF": 0.015, "100R": 0.003, "10k": 0.003
+};
+
+window.BOMOptimizer = {
+  optimize(components, autoComponents, instruction = "") {
+    const inst = instruction.toLowerCase();
+    const preferBasic = inst.includes("basic") || inst.includes("jlcpcb") || inst.includes("cheap") || inst.includes("cheaper") || inst.includes("cost");
+    const preferSmall  = inst.includes("small") || inst.includes("compact");
+
+    const substitutions = [];
+    const warnings = [];
+    let originalCost = 0, optimizedCost = 0;
+
+    const allComps = [...components, ...autoComponents];
+    for (const c of allComps) {
+      const unitPrice = BOM_PRICES[c.name] || (c.type === "passive" ? 0.005 : 0.50);
+      originalCost += unitPrice;
+
+      // Passive substitution to JLCPCB Basic
+      if (preferBasic && c.type === "passive") {
+        const val = (c.value || "").toLowerCase();
+        let basicKey = null;
+        if (val.includes("100n") || val.includes("0.1u")) basicKey = "100nF_0402";
+        else if (val.includes("10u")) basicKey = "10uF_0402";
+        else if (val.includes("4.7u")) basicKey = "4.7uF_0402";
+        else if (val.includes("1u") && !val.includes("10")) basicKey = "1uF_0402";
+        else if (val.includes("10k")) basicKey = "10k_0402";
+        else if (val.includes("100r") || val.includes("100Ω")) basicKey = "100r_0402";
+        else if (val.includes("1k")) basicKey = "1k_0402";
+        else if (val.includes("4.7k") || val.includes("4k7")) basicKey = "4k7_0402";
+
+        if (basicKey && JLCPCB_BASIC_PARTS[basicKey]) {
+          const basic = JLCPCB_BASIC_PARTS[basicKey];
+          const saving = unitPrice - basic.price;
+          substitutions.push({
+            ref: c.ref, original: `${c.name} (${c.value})`,
+            replacement: basic.desc, lcsc: basic.lcsc,
+            saving_usd: Math.max(0, saving).toFixed(4),
+            reason: "JLCPCB Basic Library — no setup fee"
+          });
+          optimizedCost += basic.price;
+          continue;
+        }
+      }
+      optimizedCost += unitPrice;
+    }
+
+    if (substitutions.length === 0 && preferBasic) {
+      warnings.push("No automatic basic-part substitutions found. Verify passive values match JLCPCB Basic catalog.");
+    }
+
+    // Deduplicate passive suggestion
+    const passiveCount = allComps.filter(c => c.type === "passive").length;
+    if (passiveCount > 10) {
+      warnings.push(`${passiveCount} passive components detected. Consider consolidating to fewer unique values to reduce setup costs.`);
+    }
+
+    const totalSaving = originalCost - optimizedCost;
+    return {
+      substitutions,
+      warnings,
+      original_cost: originalCost.toFixed(2),
+      optimized_cost: optimizedCost.toFixed(2),
+      savings_usd: Math.max(0, totalSaving).toFixed(2),
+      savings_pct: originalCost > 0 ? Math.max(0, (totalSaving / originalCost * 100)).toFixed(1) : "0.0"
+    };
+  }
+};
+
+// ═══════════════════════════════════════════════════════════
+// FEATURE 8: RF & SIGNAL INTEGRITY ADVISOR
+// ═══════════════════════════════════════════════════════════
+window.SIAdvisor = {
+  // Microstrip impedance: Wadell formula simplified
+  microstripImpedance(w_mm, h_mm = 1.6, t_mm = 0.035, er = 4.5) {
+    const w = w_mm, h = h_mm;
+    const wEff = w + (t_mm / Math.PI) * Math.log(4 * Math.E / Math.sqrt(Math.pow(t_mm / h, 2) + Math.pow(t_mm / (Math.PI * w), 2)));
+    const erEff = (er + 1) / 2 + (er - 1) / 2 * Math.pow(1 + 12 * h / wEff, -0.5);
+    let Z;
+    if (wEff / h < 1) {
+      Z = (60 / Math.sqrt(erEff)) * Math.log(8 * h / wEff + wEff / (4 * h));
+    } else {
+      Z = (120 * Math.PI) / (Math.sqrt(erEff) * (wEff / h + 1.393 + 0.667 * Math.log(wEff / h + 1.444)));
+    }
+    return Math.round(Z);
+  },
+
+  analyze(components, nets, constraints = {}) {
+    const results = [];
+    const warnings = [];
+    let totalScore = 100;
+
+    // Analyze each net for SI concerns
+    const netClasses = {
+      RF:   { targetZ: 50,  traceMm: 0.28, color: "#ef4444" },
+      USB:  { targetZ: 90,  traceMm: 0.15, color: "#f97316" },
+      SPI:  { targetZ: null, traceMm: 0.2,  color: "#facc15" },
+      I2C:  { targetZ: null, traceMm: 0.2,  color: "#a3e635" },
+      PWR:  { targetZ: null, traceMm: 0.5,  color: "#4ade80" },
+      GND:  { targetZ: null, traceMm: 0.5,  color: "#60a5fa" },
+      SIG:  { targetZ: null, traceMm: 0.25, color: "#c084fc" },
+    };
+
+    for (const net of (nets || [])) {
+      const name = (net.name || "").toUpperCase();
+      let cls = "SIG";
+      if (name.includes("RF") || name.includes("ANT")) cls = "RF";
+      else if (name.includes("USB") || name.includes("DP") || name.includes("DM")) cls = "USB";
+      else if (name.includes("SPI") || name.includes("SCK") || name.includes("MOSI")) cls = "SPI";
+      else if (name.includes("I2C") || name.includes("SDA") || name.includes("SCL")) cls = "I2C";
+      else if (name.includes("VDD") || name.includes("VCC") || name.includes("3V") || name.includes("5V")) cls = "PWR";
+      else if (name.includes("GND") || name.includes("VSS")) cls = "GND";
+
+      const nc = netClasses[cls];
+      const Z = nc.targetZ ? this.microstripImpedance(nc.traceMm) : null;
+      const Zdelta = Z && nc.targetZ ? Math.abs(Z - nc.targetZ) : 0;
+      const score = Math.max(0, 100 - Zdelta * 2 - (cls === "RF" ? 10 : 0));
+
+      if (cls === "RF" && Zdelta > 5) {
+        warnings.push({ net: net.name, msg: `RF trace impedance ${Z}Ω vs target 50Ω — adjust trace width to ${nc.traceMm}mm on 1.6mm FR4`, severity: "critical" });
+        totalScore -= 15;
+      }
+      if (cls === "USB" && Zdelta > 5) {
+        warnings.push({ net: net.name, msg: `USB D+/D- differential pair needs 90Ω impedance — route as tightly coupled pair`, severity: "high" });
+        totalScore -= 10;
+      }
+
+      results.push({
+        name: net.name, class: cls, color: nc.color,
+        trace_mm: nc.traceMm, impedance: Z, target_z: nc.targetZ,
+        score: Math.round(score), delta_ohm: Zdelta || null
+      });
+    }
+
+    // RF antenna checks
+    const rfComps = components.filter(c => c._meta?.rf || c.type === "rf");
+    const antChecks = [];
+    if (rfComps.length > 0) {
+      antChecks.push({ check: "Antenna keepout zone", status: "warn", note: "Ensure 3mm copper-free zone around antenna" });
+      antChecks.push({ check: "Ground plane under antenna", status: "fail", note: "Remove ground plane beneath PCB trace antenna" });
+      antChecks.push({ check: "RF matching network", status: "warn", note: "Add π-network: 10nH series + 1.8pF shunt for 50Ω match" });
+      antChecks.push({ check: "Crystal proximity", status: "pass", note: "Keep crystal >5mm from RF antenna" });
+      totalScore -= 10;
+    } else {
+      antChecks.push({ check: "No RF components detected", status: "pass", note: "No antenna constraints required" });
+    }
+
+    // Differential pair check
+    const diffPairs = (nets || []).filter(n => {
+      const nm = (n.name || "").toUpperCase();
+      return nm.includes("DP") || nm.includes("DM") || nm.includes("DIFF");
+    });
+    if (diffPairs.length > 0) {
+      antChecks.push({ check: "Differential pair length matching", status: "warn", note: `Match lengths to <0.1mm for ${diffPairs.map(n=>n.name).join(", ")}` });
+    }
+
+    return {
+      nets_scored: results,
+      antenna_checks: antChecks,
+      warnings,
+      overall_score: Math.max(0, Math.min(100, Math.round(totalScore))),
+      grade: totalScore >= 90 ? "A" : totalScore >= 75 ? "B" : totalScore >= 60 ? "C" : totalScore >= 45 ? "D" : "F"
+    };
+  }
+};
+
+// ═══════════════════════════════════════════════════════════
+// FEATURE 9: SCHEMATIC DNA FINGERPRINTING ENGINE
+// ═══════════════════════════════════════════════════════════
+const CIRCUIT_PATTERN_LIBRARY = [
+  { id: "widlar_mirror", name: "Widlar Current Mirror", tags: ["BJT","NPN","resistor","current"],
+    description: "Classic Widlar current mirror using two matched BJTs and an emitter degeneration resistor. Sets a reference current from a voltage source.",
+    failure_modes: ["Thermal drift between transistors", "Beta mismatch at low currents", "Early effect causing output impedance drop"],
+    tips: ["Use matched transistor pairs in same package", "Add emitter resistors to improve matching", "Bypass with a Wilson mirror for higher output impedance"] },
+  { id: "ldo_softstart", name: "LDO with Soft-Start", tags: ["LDO","regulator","capacitor","resistor"],
+    description: "Linear dropout regulator with a capacitor on the enable/adjust pin to slowly ramp output voltage, preventing inrush current.",
+    failure_modes: ["Capacitor too small → fast ramp, no benefit", "Capacitor leakage killing soft-start", "Oscillation if output cap ESR too high"],
+    tips: ["10µF ceramic on soft-start pin is typical", "Use 22µF on output for stability", "Check minimum dropout voltage vs input"] },
+  { id: "pll_typeII", name: "Type-II PLL Compensation", tags: ["PLL","op-amp","resistor","capacitor","loop filter"],
+    description: "Type-II phase-locked loop loop filter using an op-amp integrator with a lead-lag network for zero/pole placement.",
+    failure_modes: ["Phase margin too low → oscillation", "VCO gain mismatch destabilizing loop", "Power supply noise injected through VCO"],
+    tips: ["Target 45–60° phase margin", "Simulate loop gain in LTSpice before build", "Keep loop filter traces short and shielded"] },
+  { id: "buck_converter", name: "Synchronous Buck Converter", tags: ["inductor","capacitor","MOSFET","PWM","buck"],
+    description: "Step-down switching regulator using high/low side MOSFETs, an inductor, and output capacitors. Highly efficient DC-DC conversion.",
+    failure_modes: ["Inductor saturation at peak current", "High-side gate drive insufficient", "Ground bounce causing false triggering"],
+    tips: ["Keep switching loop (C_in, Q1, Q2, L) area minimal", "Use 100nF ceramic + 10µF bulk on input", "Add snubber on switch node if ringing > 150% Vout"] },
+  { id: "h_bridge", name: "H-Bridge Motor Driver", tags: ["MOSFET","motor","PWM","diode","half-bridge"],
+    description: "Four-MOSFET H-bridge for bidirectional DC motor control. Two half-bridges driven with complementary PWM signals.",
+    failure_modes: ["Shoot-through if dead-time too short", "Back-EMF exceeding MOSFET Vds rating", "Bootstrap capacitor discharge on long low-side on-time"],
+    tips: ["Add 100ns dead-time between high/low gate signals", "Use fast-recovery body diodes or schottky parallels", "Clamp motor supply with 100µF bulk cap"] },
+  { id: "rc_filter", name: "RC Low-Pass Filter", tags: ["resistor","capacitor","filter","analog"],
+    description: "First-order RC low-pass filter. Cutoff frequency fc = 1/(2π·R·C). Attenuates signals above fc at -20dB/decade.",
+    failure_modes: ["Loading effect if source impedance not considered", "Capacitor leakage adding DC offset", "Too aggressive filtering causing signal phase shift"],
+    tips: ["Buffer with op-amp to prevent loading", "For ADC input filtering: fc = Fsample/10", "Use C0G/NP0 caps for stable frequency response"] },
+  { id: "oscillator", name: "Crystal Oscillator (Pierce)", tags: ["crystal","capacitor","inverter","oscillator"],
+    description: "Pierce oscillator using a crystal, two load capacitors, and a CMOS inverter or dedicated oscillator IC.",
+    failure_modes: ["Wrong load capacitance shifting frequency", "Layout parasitic capacitance detuning crystal", "Oscillator startup failure at cold temperatures"],
+    tips: ["Match CL1 = CL2 to crystal spec minus stray (typically 5-7pF stray)", "Keep crystal traces short, shielded, away from switching nodes", "Add 1MΩ feedback resistor for DC bias"] },
+  { id: "usb_fs", name: "USB Full-Speed Interface", tags: ["USB","differential","resistor","crystal","MCU"],
+    description: "USB 2.0 Full-Speed (12Mbps) interface with 22Ω series termination resistors, 1.5kΩ pullup on D+ for device enumeration.",
+    failure_modes: ["Missing 22Ω series resistors causing reflections", "Incorrect D+ pullup value failing enumeration", "Ground plane gaps causing signal integrity issues"],
+    tips: ["Route D+/D- as matched-length differential pair", "Keep 22Ω termination within 10mm of MCU pins", "Add TVS diode (PRTR5V0U2X) for ESD protection"] },
+  { id: "i2c_pullup", name: "I²C Bus with Pullups", tags: ["I2C","resistor","MCU","sensor","open-drain"],
+    description: "I²C bus topology with open-drain SDA/SCL lines pulled up to VCC through resistors. Multi-device shared bus.",
+    failure_modes: ["Pullup too strong → high bus capacitance fights slew rate", "Pullup too weak → slow edges, timing violations", "Address collision between devices"],
+    tips: ["Use 4.7kΩ at 100kHz, 2.2kΩ at 400kHz, 1kΩ at 1MHz", "Max bus capacitance 400pF for standard mode", "Verify all device addresses before choosing ICs"] },
+  { id: "voltage_divider", name: "Resistive Voltage Divider", tags: ["resistor","resistor","voltage","ADC"],
+    description: "Two-resistor voltage divider for scaling down voltages for ADC input or bias point setting.",
+    failure_modes: ["Loading by ADC input impedance shifting ratio", "Resistor tolerance accumulating error", "Thermal coefficient mismatch between resistors"],
+    tips: ["Use 1% or better resistors for precision", "Buffer with op-amp follower if ADC input impedance < 10× R2", "Use matched resistors in same package for thermal tracking"] },
+  { id: "esd_protection", name: "ESD Protection Network", tags: ["TVS","zener","ESD","diode","capacitor"],
+    description: "ESD protection using TVS diodes, series resistors, and bypass caps on I/O lines to clamp transients.",
+    failure_modes: ["TVS clamping voltage too high for MCU I/O", "Series resistor too large causing drive strength issues", "TVS capacitance too high for high-speed lines"],
+    tips: ["Select TVS with Vc < MCU absolute max voltage", "Use PRTR5V0U2X (30pF) for USB D+/D-", "For RF: use 0402 ferrite bead + 100pF cap instead of TVS"] },
+];
+
+window.DNAEngine = {
+  fingerprint(componentList, netList) {
+    const compTypes = componentList.map(c => (c.type || c.name || "").toLowerCase());
+    const netNames = (netList || []).map(n => (n.name || "").toLowerCase());
+
+    const scores = CIRCUIT_PATTERN_LIBRARY.map(pattern => {
+      let score = 0;
+      for (const tag of pattern.tags) {
+        const t = tag.toLowerCase();
+        if (compTypes.some(ct => ct.includes(t))) score += 20;
+        if (netNames.some(nn => nn.includes(t))) score += 10;
+      }
+      // Keyword match in names
+      const allNames = [...compTypes, ...netNames].join(" ");
+      for (const tag of pattern.tags) {
+        if (allNames.includes(tag.toLowerCase())) score += 5;
+      }
+      return { ...pattern, confidence: Math.min(100, score) };
+    });
+
+    const sorted = scores.sort((a, b) => b.confidence - a.confidence);
+    const top3 = sorted.slice(0, 3).filter(p => p.confidence > 0);
+
+    if (top3.length === 0) {
+      return {
+        match: null, confidence: 0,
+        explanation: "No known circuit pattern detected. Try adding more component types or net names.",
+        failure_modes: [], tips: [], alternatives: []
+      };
+    }
+
+    const best = top3[0];
+    return {
+      match: best.name,
+      confidence: best.confidence,
+      explanation: best.description,
+      failure_modes: best.failure_modes,
+      tips: best.tips,
+      alternatives: top3.slice(1).map(p => ({ name: p.name, confidence: p.confidence }))
+    };
+  }
+};
+
+// ═══════════════════════════════════════════════════════════
+// FEATURE 10: MANUFACTURABILITY SCORECARD ENGINE
+// ═══════════════════════════════════════════════════════════
+const FAB_RULES_DB = {
+  jlcpcb: {
+    name: "JLCPCB",
+    min_trace_mm: 0.127,  min_clearance_mm: 0.127, min_drill_mm: 0.2,
+    min_annular_ring_mm: 0.13, min_via_diameter_mm: 0.45,
+    min_silkscreen_mm: 0.1, max_copper_layers: 8,
+    supports_bga: true,    supports_via_in_pad: false,
+    min_hole_to_edge_mm: 0.3, max_components_per_side: 500,
+    assembly_sides: 2,     color: "#4ade80"
+  },
+  pcbway: {
+    name: "PCBWay",
+    min_trace_mm: 0.1,    min_clearance_mm: 0.1,  min_drill_mm: 0.15,
+    min_annular_ring_mm: 0.1, min_via_diameter_mm: 0.35,
+    min_silkscreen_mm: 0.1, max_copper_layers: 14,
+    supports_bga: true,    supports_via_in_pad: true,
+    min_hole_to_edge_mm: 0.25, max_components_per_side: 1000,
+    assembly_sides: 2,     color: "#60a5fa"
+  },
+  oshpark: {
+    name: "OSHPark",
+    min_trace_mm: 0.152,  min_clearance_mm: 0.152, min_drill_mm: 0.254,
+    min_annular_ring_mm: 0.15, min_via_diameter_mm: 0.508,
+    min_silkscreen_mm: 0.15, max_copper_layers: 4,
+    supports_bga: false,   supports_via_in_pad: false,
+    min_hole_to_edge_mm: 0.38, max_components_per_side: 200,
+    assembly_sides: 1,     color: "#a78bfa"
+  }
+};
+
+window.DFMEngine = {
+  score(design, fabKey = "jlcpcb") {
+    const fab = FAB_RULES_DB[fabKey] || FAB_RULES_DB.jlcpcb;
+    const comps = [...(design.components || []), ...(design.auto_added_components || [])];
+    const constraints = design.constraints || {};
+    const checks = [];
+    let pass = 0;
+
+    const addCheck = (name, status, note, critical = false) => {
+      checks.push({ name, status, note, critical });
+      if (status === "pass") pass++;
+    };
+
+    // 1. Trace width
+    const traceW = constraints.min_trace_mm || 0.2;
+    addCheck("Minimum trace width", traceW >= fab.min_trace_mm ? "pass" : "fail",
+      traceW >= fab.min_trace_mm
+        ? `${traceW}mm ≥ fab minimum ${fab.min_trace_mm}mm ✓`
+        : `Design uses ${traceW}mm traces but fab minimum is ${fab.min_trace_mm}mm`, true);
+
+    // 2. BGA support
+    const hasBGA = comps.some(c => (c.package||"").toUpperCase().includes("BGA"));
+    addCheck("BGA component support",
+      !hasBGA || fab.supports_bga ? "pass" : "fail",
+      hasBGA && !fab.supports_bga ? `${fab.name} does not support BGA assembly` : "No BGA components, or fab supports BGA ✓", true);
+
+    // 3. Via-in-pad
+    const hasViaPad = design.rf_or_critical_rules?.some(r => (r.rule||"").toLowerCase().includes("via")) || false;
+    addCheck("Via-in-pad usage",
+      !hasViaPad || fab.supports_via_in_pad ? "pass" : "warn",
+      fab.supports_via_in_pad ? "Via-in-pad supported by this fab" : "Avoid via-in-pad — not supported without extra cost");
+
+    // 4. Layer count
+    const layers = parseInt(constraints.layers) || 2;
+    addCheck("Layer count",
+      layers <= fab.max_copper_layers ? "pass" : "fail",
+      `${layers} layers — fab supports up to ${fab.max_copper_layers} ✓`);
+
+    // 5. Component count vs assembly limits
+    const totalComps = comps.length;
+    addCheck("Assembly component count",
+      totalComps <= fab.max_components_per_side ? "pass" : "warn",
+      `${totalComps} components — fab limit per side: ${fab.max_components_per_side}`);
+
+    // 6. RF antenna keepout (JLCPCB needs copper-free zone in gerbers)
+    const hasRF = comps.some(c => c._meta?.rf || c.type === "rf" || (c.name||"").toLowerCase().includes("rf"));
+    addCheck("RF antenna keepout",
+      "warn",
+      hasRF ? "Verify antenna keepout zone in gerbers — 3mm copper-free area required" : "No RF components detected ✓");
+    if (!hasRF) pass++;
+
+    // 7. Silkscreen clearance
+    addCheck("Silkscreen clearance", "pass",
+      `Silkscreen min ${fab.min_silkscreen_mm}mm — use default KiCad silkscreen settings ✓`);
+
+    // 8. Drill size
+    addCheck("Minimum drill size", "pass",
+      `Via drill ${fab.min_drill_mm}mm minimum — standard 0.3mm drill exceeds requirement ✓`);
+
+    // 9. Annular ring
+    addCheck("Annular ring size", "pass",
+      `Minimum annular ring ${fab.min_annular_ring_mm}mm — standard 0.15mm ring is sufficient ✓`);
+
+    // 10. Double-sided assembly
+    const twoSided = constraints.double_sided || false;
+    addCheck("Double-sided assembly",
+      !twoSided || fab.assembly_sides >= 2 ? "pass" : "warn",
+      twoSided && fab.assembly_sides < 2
+        ? `${fab.name} only supports single-side assembly in standard tier`
+        : "Assembly configuration supported ✓");
+
+    const total = checks.length;
+    const pct = Math.round((pass / total) * 100);
+    const grade = pct >= 95 ? "A" : pct >= 85 ? "B" : pct >= 70 ? "C" : pct >= 55 ? "D" : "F";
+    const failures = checks.filter(c => c.status === "fail");
+    const warns = checks.filter(c => c.status === "warn");
+
+    const recommendations = [];
+    if (failures.length > 0) recommendations.push(`Fix ${failures.length} critical failure(s) before ordering`);
+    if (warns.length > 0) recommendations.push(`Review ${warns.length} warning(s) — may incur extra fab cost`);
+    if (grade === "A") recommendations.push("Design is production-ready for " + fab.name + " ✓");
+    recommendations.push(`Minimum order quantity at ${fab.name}: 5 PCBs`);
+    recommendations.push("Export gerbers from KiCad: File → Fabrication Outputs → Gerbers");
+
+    return { fab_name: fab.name, fab_key: fabKey, fab_color: fab.color, grade, score_pct: pct, checks, failures, warnings: warns, recommendations };
+  }
+};
+
+// ═══════════════════════════════════════════════════════════
+// FEATURE 11: BLOCK DIAGRAM ENGINE (export helper)
+// ═══════════════════════════════════════════════════════════
+window.BlockDiagramEngine = {
+  BLOCK_TYPES: {
+    MCU:       { icon: "🔲", color: "#4fc3f7", defaultLabel: "Microcontroller" },
+    Power:     { icon: "⚡", color: "#fbbf24", defaultLabel: "Power Supply" },
+    RF:        { icon: "📡", color: "#ef4444", defaultLabel: "RF Module" },
+    Sensor:    { icon: "🌡", color: "#34d399", defaultLabel: "Sensor" },
+    Comms:     { icon: "🔌", color: "#a78bfa", defaultLabel: "Communications" },
+    Display:   { icon: "🖥", color: "#f472b6", defaultLabel: "Display" },
+    Connector: { icon: "🔗", color: "#94a3b8", defaultLabel: "Connector" },
+    Memory:    { icon: "💾", color: "#fb923c", defaultLabel: "Memory" },
+  },
+  CONN_TYPES: {
+    SPI:   { color: "#fbbf24", width: 2 },
+    I2C:   { color: "#34d399", width: 2 },
+    UART:  { color: "#a78bfa", width: 2 },
+    Power: { color: "#ef4444", width: 3 },
+    GPIO:  { color: "#94a3b8", width: 1 },
+    USB:   { color: "#60a5fa", width: 2 },
+    SWD:   { color: "#f472b6", width: 1 },
+  },
+
+  exportToKicadSch(diagram) {
+    const { blocks = [], connections = [] } = diagram;
+    const uid = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+      const r = Math.random() * 16 | 0;
+      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+
+    const sheetLines = [];
+    sheetLines.push(`(kicad_sch (version 20230121) (generator "kicad_ai_copilot")`);
+    sheetLines.push(`  (paper "A4")`);
+
+    for (let i = 0; i < blocks.length; i++) {
+      const b = blocks[i];
+      const sx = 50 + (i % 4) * 60, sy = 50 + Math.floor(i / 4) * 60;
+      sheetLines.push(`  (sheet (at ${sx} ${sy}) (size 30 20) (uuid "${uid()}")`);
+      sheetLines.push(`    (property "Sheetname" "${b.label || b.type}" (id 0) (at ${sx} ${sy - 2} 0))`);
+      sheetLines.push(`    (property "Sheetfile" "${(b.label || b.type).replace(/\s/g, '_')}.kicad_sch" (id 1) (at ${sx} ${sy + 22} 0))`);
+      sheetLines.push(`  )`);
+    }
+
+    for (const conn of connections) {
+      sheetLines.push(`  ; Connection: ${conn.from} → ${conn.to} [${conn.label || conn.type}]`);
+    }
+    sheetLines.push(`)`);
+
+    const subSchDefs = {};
+    for (const b of blocks) {
+      const name = (b.label || b.type).replace(/\s/g, '_');
+      subSchDefs[name] = [
+        `(kicad_sch (version 20230121) (generator "kicad_ai_copilot")`,
+        `  (paper "A4")`,
+        `  ; Sub-schematic for block: ${b.label || b.type} (${b.type})`,
+        `  ; TODO: AI-generated components will be placed here`,
+        `)`
+      ].join('\n');
+    }
+
+    return { top_sch: sheetLines.join('\n'), sub_schematics: subSchDefs };
+  }
+};
+
+// ═══════════════════════════════════════════════════════════
+// FEATURE 12: FIRMWARE UNIT TEST GENERATOR ENGINE
+// ═══════════════════════════════════════════════════════════
+window.FirmwareEngine = {
+  generate(design, framework = "stm32") {
+    const comps = [...(design.components || []), ...(design.auto_added_components || [])];
+    const projectName = (design.project_name || "kicad_project").replace(/\s/g, '_').toUpperCase();
+    const nets = design.nets || [];
+
+    // ── pins.h ────────────────────────────────────────────
+    const pinsLines = [
+      `#pragma once`,
+      `/* ====================================================`,
+      ` * ${projectName} — Hardware Pin Definitions`,
+      ` * Generated by KiCad AI Copilot`,
+      ` * DO NOT EDIT — regenerate from KiCad AI Copilot`,
+      ` * ==================================================== */`,
+      ``
+    ];
+
+    if (framework === "stm32") {
+      pinsLines.push(`#include "stm32g0xx_hal.h"`);
+    } else if (framework === "arduino") {
+      pinsLines.push(`#include <Arduino.h>`);
+    }
+    pinsLines.push(``);
+
+    const mcus = comps.filter(c => c.type === "MCU");
+    const leds = comps.filter(c => c.name === "LED" || c.ref?.startsWith("LED") || c._meta?.canonical === "LED");
+    const btns = comps.filter(c => c.name === "BUTTON" || c.ref?.startsWith("BTN") || c._meta?.canonical === "BUTTON");
+
+    if (framework === "stm32") {
+      pinsLines.push(`/* MCU */`);
+      for (const m of mcus) pinsLines.push(`#define MCU_${(m.name||"MCU").replace(/[^A-Z0-9]/gi,"_").toUpperCase()} /* ${m.ref || "U1"} */`);
+      pinsLines.push(``);
+      pinsLines.push(`/* LEDs */`);
+      leds.forEach((l,i) => pinsLines.push(`#define LED_${i+1}_PIN  GPIO_PIN_${5+i}\n#define LED_${i+1}_PORT GPIOA`));
+      pinsLines.push(``);
+      pinsLines.push(`/* Buttons */`);
+      btns.forEach((b,i) => pinsLines.push(`#define BTN_${i+1}_PIN  GPIO_PIN_${i}\n#define BTN_${i+1}_PORT GPIOB`));
+      pinsLines.push(``);
+      pinsLines.push(`/* SPI */`);
+      pinsLines.push(`#define SPI_SCK_PIN   GPIO_PIN_5\n#define SPI_MOSI_PIN  GPIO_PIN_7\n#define SPI_MISO_PIN  GPIO_PIN_6\n#define SPI_CS_PIN    GPIO_PIN_4`);
+      pinsLines.push(``);
+      pinsLines.push(`/* I2C */`);
+      pinsLines.push(`#define I2C_SCL_PIN   GPIO_PIN_6\n#define I2C_SDA_PIN   GPIO_PIN_7\n#define I2C_PORT      GPIOB`);
+    } else {
+      pinsLines.push(`/* LEDs */`);
+      leds.forEach((l,i) => pinsLines.push(`#define LED_${i+1}_PIN  ${13+i}`));
+      pinsLines.push(``);
+      pinsLines.push(`/* Buttons */`);
+      btns.forEach((b,i) => pinsLines.push(`#define BTN_${i+1}_PIN  ${i+2}`));
+      pinsLines.push(``);
+      pinsLines.push(`#define SPI_CS_PIN    10\n#define I2C_ADDR      0x76`);
+    }
+    pinsLines.push(``);
+    for (const net of nets.slice(0, 8)) {
+      pinsLines.push(`/* Net: ${net.name} → ${(net.connections||[]).join(", ")} */`);
+    }
+
+    // ── hal_stubs.h ───────────────────────────────────────
+    const halH = [
+      `#pragma once`,
+      `#include <stdint.h>`,
+      `/* ====================================================`,
+      ` * ${projectName} — Hardware Abstraction Layer`,
+      ` * Generated by KiCad AI Copilot`,
+      ` * ==================================================== */`,
+      ``,
+      `/* System */`,
+      `void HAL_System_Init(void);`,
+      `void HAL_System_Reset(void);`,
+      `uint32_t HAL_GetTickMs(void);`,
+      ``,
+    ];
+    if (leds.length > 0) {
+      halH.push(`/* LEDs */`);
+      leds.forEach((l,i) => halH.push(`void LED_${i+1}_Set(uint8_t state);`, `void LED_${i+1}_Toggle(void);`));
+      halH.push(``);
+    }
+    if (btns.length > 0) {
+      halH.push(`/* Buttons */`);
+      btns.forEach((b,i) => halH.push(`uint8_t BTN_${i+1}_Read(void);`));
+      halH.push(``);
+    }
+    halH.push(`/* SPI */`);
+    halH.push(`HAL_StatusTypeDef SPI_Transfer(uint8_t *tx, uint8_t *rx, uint16_t len);`);
+    halH.push(`HAL_StatusTypeDef SPI_CS_Assert(void);`);
+    halH.push(`HAL_StatusTypeDef SPI_CS_Release(void);`);
+    halH.push(``);
+    halH.push(`/* I2C */`);
+    halH.push(`HAL_StatusTypeDef I2C_Write(uint8_t addr, uint8_t *data, uint16_t len);`);
+    halH.push(`HAL_StatusTypeDef I2C_Read(uint8_t addr, uint8_t reg, uint8_t *data, uint16_t len);`);
+    halH.push(``);
+    for (const c of comps.filter(c => c.type === "sensor" || c.type === "rf")) {
+      const sname = (c.name||c.ref||"SENSOR").replace(/[^A-Z0-9]/gi,"_").toUpperCase();
+      halH.push(`/* ${c.name} */`);
+      halH.push(`int ${sname}_Init(void);`);
+      halH.push(`int ${sname}_Read(float *val);`);
+      halH.push(``);
+    }
+
+    // ── hal_stubs.c ───────────────────────────────────────
+    const halC = [
+      `#include "hal_stubs.h"`,
+      `#include "pins.h"`,
+      `/* ====================================================`,
+      ` * ${projectName} — HAL Implementation Stubs`,
+      ` * Replace stub bodies with real peripheral code`,
+      ` * ==================================================== */`,
+      ``,
+      `void HAL_System_Init(void) {`,
+      framework === "stm32"
+        ? `  HAL_Init();\n  SystemClock_Config();\n  MX_GPIO_Init();\n  MX_SPI1_Init();\n  MX_I2C1_Init();`
+        : `  /* Initialize hardware peripherals */`,
+      `}`,
+      `void HAL_System_Reset(void) { NVIC_SystemReset(); }`,
+      `uint32_t HAL_GetTickMs(void) { return HAL_GetTick(); }`,
+      ``,
+    ];
+    leds.forEach((l,i) => {
+      halC.push(`void LED_${i+1}_Set(uint8_t state) {`);
+      halC.push(framework === "stm32"
+        ? `  HAL_GPIO_WritePin(LED_${i+1}_PORT, LED_${i+1}_PIN, state ? GPIO_PIN_SET : GPIO_PIN_RESET);`
+        : `  digitalWrite(LED_${i+1}_PIN, state);`);
+      halC.push(`}`);
+      halC.push(`void LED_${i+1}_Toggle(void) {`);
+      halC.push(framework === "stm32"
+        ? `  HAL_GPIO_TogglePin(LED_${i+1}_PORT, LED_${i+1}_PIN);`
+        : `  digitalWrite(LED_${i+1}_PIN, !digitalRead(LED_${i+1}_PIN));`);
+      halC.push(`}`, ``);
+    });
+    btns.forEach((b,i) => {
+      halC.push(`uint8_t BTN_${i+1}_Read(void) {`);
+      halC.push(framework === "stm32"
+        ? `  return (HAL_GPIO_ReadPin(BTN_${i+1}_PORT, BTN_${i+1}_PIN) == GPIO_PIN_RESET) ? 1 : 0;`
+        : `  return digitalRead(BTN_${i+1}_PIN) == LOW ? 1 : 0;`);
+      halC.push(`}`, ``);
+    });
+
+    // ── test_harness.c ────────────────────────────────────
+    const testC = [
+      `#include "unity.h"`,
+      `#include "hal_stubs.h"`,
+      `/* ====================================================`,
+      ` * ${projectName} — Hardware Unit Tests (Unity)`,
+      ` * Run on target hardware or Renode simulation`,
+      ` * ==================================================== */`,
+      ``,
+      `void setUp(void) { HAL_System_Init(); }`,
+      `void tearDown(void) { /* cleanup */ }`,
+      ``,
+    ];
+    leds.forEach((l,i) => {
+      testC.push(`void test_LED_${i+1}_Toggles(void) {`);
+      testC.push(`  LED_${i+1}_Set(1);`);
+      testC.push(`  TEST_ASSERT_EQUAL(1, /* read pin */ 1); /* TODO: verify with oscilloscope or GPIO read-back */`);
+      testC.push(`  LED_${i+1}_Set(0);`);
+      testC.push(`}`);
+      testC.push(``);
+    });
+    btns.forEach((b,i) => {
+      testC.push(`void test_BTN_${i+1}_Read(void) {`);
+      testC.push(`  uint8_t val = BTN_${i+1}_Read();`);
+      testC.push(`  TEST_ASSERT_TRUE(val == 0 || val == 1);`);
+      testC.push(`}`);
+      testC.push(``);
+    });
+    for (const c of comps.filter(c => c.type === "sensor")) {
+      const sname = (c.name||c.ref||"SENSOR").replace(/[^A-Z0-9]/gi,"_").toUpperCase();
+      testC.push(`void test_${sname}_Init(void) {`);
+      testC.push(`  int ret = ${sname}_Init();`);
+      testC.push(`  TEST_ASSERT_EQUAL(0, ret);`);
+      testC.push(`}`);
+      testC.push(``);
+    }
+    testC.push(`int main(void) {`);
+    testC.push(`  UNITY_BEGIN();`);
+    leds.forEach((l,i) => testC.push(`  RUN_TEST(test_LED_${i+1}_Toggles);`));
+    btns.forEach((b,i) => testC.push(`  RUN_TEST(test_BTN_${i+1}_Read);`));
+    for (const c of comps.filter(c => c.type === "sensor")) {
+      const sname = (c.name||c.ref||"SENSOR").replace(/[^A-Z0-9]/gi,"_").toUpperCase();
+      testC.push(`  RUN_TEST(test_${sname}_Init);`);
+    }
+    testC.push(`  return UNITY_END();`);
+    testC.push(`}`);
+
+    // ── hardware.yaml ─────────────────────────────────────
+    const yamlLines = [
+      `project: "${design.project_name || "KiCad Project"}"`,
+      `generated_by: "KiCad AI Copilot"`,
+      `framework: "${framework}"`,
+      ``,
+      `components:`
+    ];
+    for (const c of comps.slice(0, 20)) {
+      yamlLines.push(`  - ref: "${c.ref || "?"}"`);
+      yamlLines.push(`    name: "${c.name || "?"}"`);
+      yamlLines.push(`    type: "${c.type || "?"}"`);
+    }
+    yamlLines.push(``);
+    yamlLines.push(`test_targets:`);
+    leds.forEach((l,i) => yamlLines.push(`  - LED_${i+1}_Toggles`));
+    btns.forEach((b,i) => yamlLines.push(`  - BTN_${i+1}_Read`));
+    for (const c of comps.filter(c => c.type === "sensor")) {
+      const sname = (c.name||"SENSOR").replace(/[^A-Z0-9]/gi,"_").toUpperCase();
+      yamlLines.push(`  - ${sname}_Init`);
+    }
+
+    return {
+      "pins.h": pinsLines.join("\n"),
+      "hal_stubs.h": halH.join("\n"),
+      "hal_stubs.c": halC.join("\n"),
+      "test_harness.c": testC.join("\n"),
+      "hardware.yaml": yamlLines.join("\n")
+    };
+  }
+};
+

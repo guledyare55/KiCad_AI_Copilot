@@ -43,6 +43,7 @@
       </div>
       <nav class="header-nav">
         <a href="#" class="nav-link active" id="nav-design">Design</a>
+        <a href="#" class="nav-link" id="nav-block">🕹 Block Editor</a>
         <a href="#" class="nav-link" id="nav-examples">Examples</a>
         <a href="#" class="nav-link" id="nav-docs">Docs</a>
       </nav>
@@ -169,6 +170,20 @@
         </span>
       </button>
 
+      <!-- DNA Fingerprint Panel -->
+      <div class="dna-panel" id="dna-panel">
+        <div class="dna-panel-header">
+          <span class="dna-title">🧬 Circuit DNA Fingerprint</span>
+          <button class="dna-toggle" id="dna-toggle">▼</button>
+        </div>
+        <div class="dna-body hidden" id="dna-body">
+          <p class="dna-hint">Paste component types + net names to identify the circuit pattern:</p>
+          <textarea id="dna-input" class="form-textarea" rows="3" placeholder="e.g: NPN, NPN, resistor, resistor — nets: VREF, IOUT, GND"></textarea>
+          <button class="action-btn" id="dna-analyze-btn" style="margin-top:8px;width:100%">Analyze Pattern</button>
+          <div class="dna-result hidden" id="dna-result"></div>
+        </div>
+      </div>
+
       <!-- Stats Bar -->
       <div class="stats-bar" id="stats-bar">
         <div class="stat-item">
@@ -267,6 +282,11 @@
           <button class="tab-btn" data-tab="components" id="tab-components">Components</button>
           <button class="tab-btn" data-tab="nets" id="tab-nets">Nets</button>
           <button class="tab-btn" data-tab="placement" id="tab-placement">PCB Rules</button>
+          <button class="tab-btn tab-btn-hot" data-tab="thermal" id="tab-thermal">🌡 Thermal</button>
+          <button class="tab-btn tab-btn-green" data-tab="bom" id="tab-bom">💰 BOM</button>
+          <button class="tab-btn tab-btn-blue" data-tab="si" id="tab-si">📡 SI</button>
+          <button class="tab-btn tab-btn-fab" data-tab="dfm" id="tab-dfm">🏭 DFM</button>
+          <button class="tab-btn tab-btn-fw" data-tab="firmware" id="tab-firmware">🧪 Firmware</button>
           <button class="tab-btn" data-tab="raw" id="tab-raw">Raw JSON</button>
         </div>
 
@@ -314,6 +334,82 @@
           <div class="rf-rules-section" id="rf-rules-section"></div>
         </div>
 
+        <!-- Tab: Thermal Heatmap -->
+        <div class="tab-content" id="tab-content-thermal">
+          <div class="thermal-layout">
+            <div class="thermal-canvas-wrap">
+              <div class="thermal-legend">
+                <span class="legend-label">Cool</span>
+                <div class="legend-bar"></div>
+                <span class="legend-label">Hot</span>
+              </div>
+              <canvas id="thermal-canvas" class="thermal-canvas" width="360" height="360"></canvas>
+              <div class="hotspot-list" id="hotspot-list"></div>
+            </div>
+            <div class="thermal-recs" id="thermal-recs"></div>
+          </div>
+        </div>
+
+        <!-- Tab: BOM Optimizer -->
+        <div class="tab-content" id="tab-content-bom">
+          <div class="bom-optimizer">
+            <div class="bom-input-row">
+              <input type="text" id="bom-instruction" class="form-input" placeholder='e.g. "JLCPCB basic only", "make cheaper", "consolidate passives"' />
+              <button class="action-btn action-btn-primary" id="bom-optimize-btn">Optimize BOM</button>
+            </div>
+            <div id="bom-result"></div>
+          </div>
+        </div>
+
+        <!-- Tab: RF & SI Advisor -->
+        <div class="tab-content" id="tab-content-si">
+          <div class="si-layout">
+            <div class="si-score-card" id="si-score-card"></div>
+            <div class="si-nets-table" id="si-nets-table"></div>
+            <div class="si-antenna-checks" id="si-antenna-checks"></div>
+            <div class="si-warnings" id="si-warnings"></div>
+          </div>
+        </div>
+
+        <!-- Tab: DFM Scorecard -->
+        <div class="tab-content" id="tab-content-dfm">
+          <div class="dfm-layout">
+            <div class="dfm-fab-selector" id="dfm-fab-selector">
+              <button class="dfm-fab-btn active" data-fab="jlcpcb">JLCPCB</button>
+              <button class="dfm-fab-btn" data-fab="pcbway">PCBWay</button>
+              <button class="dfm-fab-btn" data-fab="oshpark">OSHPark</button>
+            </div>
+            <div class="dfm-grade-row" id="dfm-grade-row"></div>
+            <div class="dfm-checks" id="dfm-checks"></div>
+            <div class="dfm-recommendations" id="dfm-recommendations"></div>
+          </div>
+        </div>
+
+        <!-- Tab: Firmware Generator -->
+        <div class="tab-content" id="tab-content-firmware">
+          <div class="fw-layout">
+            <div class="fw-toolbar">
+              <div class="fw-framework-select" id="fw-framework-select">
+                <button class="fw-fw-btn active" data-fw="stm32">STM32 HAL</button>
+                <button class="fw-fw-btn" data-fw="arduino">Arduino</button>
+                <button class="fw-fw-btn" data-fw="generic">Generic C</button>
+              </div>
+              <button class="action-btn" id="fw-generate-btn">Generate Stubs</button>
+              <button class="action-btn action-btn-primary" id="fw-download-btn">⬇ Download All</button>
+            </div>
+            <div class="fw-tabs">
+              <button class="fw-tab active" data-fwtab="pins">pins.h</button>
+              <button class="fw-tab" data-fwtab="hal_h">hal_stubs.h</button>
+              <button class="fw-tab" data-fwtab="hal_c">hal_stubs.c</button>
+              <button class="fw-tab" data-fwtab="test">test_harness.c</button>
+              <button class="fw-tab" data-fwtab="yaml">hardware.yaml</button>
+            </div>
+            <div class="fw-code-viewer-wrap">
+              <pre class="fw-code-viewer" id="fw-code-viewer"><!-- Click "Generate Stubs" --></pre>
+            </div>
+          </div>
+        </div>
+
         <!-- Tab: Raw JSON -->
         <div class="tab-content" id="tab-content-raw">
           <div class="raw-json-header">
@@ -348,6 +444,71 @@
       </div>
     </section>
   </main>
+
+  <!-- Block Diagram Editor (full-screen overlay) -->
+  <div class="block-editor-overlay hidden" id="block-editor-overlay">
+    <div class="block-editor-header">
+      <span class="block-editor-title">🕹 Block Diagram Editor</span>
+      <div class="block-editor-toolbar">
+        <button class="be-tool-btn active" id="be-tool-select">Select</button>
+        <button class="be-tool-btn" id="be-tool-connect">Connect</button>
+        <button class="be-tool-btn" id="be-tool-delete">Delete</button>
+        <select class="be-conn-type" id="be-conn-type">
+          <option>SPI</option><option>I2C</option><option>UART</option>
+          <option>Power</option><option>GPIO</option><option>USB</option><option>SWD</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="action-btn" id="be-expand-btn">⚡ Expand Selected</button>
+        <button class="action-btn action-btn-primary" id="be-export-btn">Export KiCad SCH</button>
+        <button class="modal-close" id="be-close-btn">✕</button>
+      </div>
+    </div>
+    <div class="block-editor-body">
+      <!-- Palette -->
+      <div class="be-palette">
+        <div class="be-palette-title">Blocks</div>
+        <button class="be-palette-btn" data-type="MCU">🔲 MCU</button>
+        <button class="be-palette-btn" data-type="Power">⚡ Power</button>
+        <button class="be-palette-btn" data-type="RF">📡 RF</button>
+        <button class="be-palette-btn" data-type="Sensor">🌡 Sensor</button>
+        <button class="be-palette-btn" data-type="Comms">🔌 Comms</button>
+        <button class="be-palette-btn" data-type="Display">🖥 Display</button>
+        <button class="be-palette-btn" data-type="Connector">🔗 Connector</button>
+        <button class="be-palette-btn" data-type="Memory">💾 Memory</button>
+        <div class="be-palette-title" style="margin-top:16px">Connection Type</div>
+        <div class="be-legend">
+          <div class="be-leg-item"><span class="be-leg-dot" style="background:#fbbf24"></span>SPI</div>
+          <div class="be-leg-item"><span class="be-leg-dot" style="background:#34d399"></span>I2C</div>
+          <div class="be-leg-item"><span class="be-leg-dot" style="background:#a78bfa"></span>UART</div>
+          <div class="be-leg-item"><span class="be-leg-dot" style="background:#ef4444"></span>Power</div>
+          <div class="be-leg-item"><span class="be-leg-dot" style="background:#60a5fa"></span>USB</div>
+          <div class="be-leg-item"><span class="be-leg-dot" style="background:#f472b6"></span>SWD</div>
+        </div>
+        <div class="be-palette-title" style="margin-top:16px">Actions</div>
+        <button class="be-palette-btn" id="be-clear-btn">🗑 Clear All</button>
+        <button class="be-palette-btn" id="be-auto-layout-btn">🔀 Auto Layout</button>
+      </div>
+      <!-- Canvas -->
+      <div class="be-canvas-wrap">
+        <svg class="be-canvas" id="be-canvas" tabindex="0">
+          <defs>
+            <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+              <polygon points="0 0, 8 3, 0 6" fill="#4fc3f7" />
+            </marker>
+          </defs>
+          <g id="be-connections-layer"></g>
+          <g id="be-blocks-layer"></g>
+        </svg>
+        <div class="be-status" id="be-status">Click a block type in the palette to add it. Use "Connect" mode to link blocks.</div>
+      </div>
+      <!-- Side panel -->
+      <div class="be-side-panel" id="be-side-panel">
+        <div class="be-side-title">Properties</div>
+        <div id="be-side-content"><p style="color:var(--text-muted);font-size:12px">Select a block to view properties</p></div>
+      </div>
+    </div>
+  </div>
 
   <!-- Toast Notification -->
   <div class="toast" id="toast"></div>

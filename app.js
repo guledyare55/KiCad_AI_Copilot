@@ -56,6 +56,12 @@ document.addEventListener("DOMContentLoaded", () => {
   initOutputActions();
   initGenerateButton();
   initFootprintSynthesizer();
+  initDNAPanel();
+  initBOMOptimizer();
+  initDFMScorecard();
+  initFirmwareGenerator();
+  initBlockEditor();
+  initNavLinks();
 });
 
 // ─── Mode Toggle ──────────────────────────────────────────
@@ -292,6 +298,9 @@ function renderOutput(output, input) {
   renderNets(output);
   renderPcbRules(output);
   renderRawJson(output);
+  renderThermalHeatmap(output);
+  renderSIAdvisor(output);
+  renderDFMScorecard(output, State.currentDFMFab || "jlcpcb");
 
   // Reset to overview tab
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
@@ -790,4 +799,562 @@ function fpRenderPreview() {
   ctx.font = "bold 11px Inter, sans-serif";
   ctx.textAlign = "center";
   ctx.fillText(p.name, cx, cy + 4);
+}
+
+// ═══════════════════════════════════════════════════════════
+// NAV LINK — Block Editor toggle
+// ═══════════════════════════════════════════════════════════
+function initNavLinks() {
+  document.getElementById("nav-block")?.addEventListener("click", e => {
+    e.preventDefault();
+    document.getElementById("block-editor-overlay")?.classList.remove("hidden");
+  });
+  document.getElementById("be-close-btn")?.addEventListener("click", () => {
+    document.getElementById("block-editor-overlay")?.classList.add("hidden");
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// FEATURE 6: THERMAL HEATMAP RENDERER
+// ═══════════════════════════════════════════════════════════
+function renderThermalHeatmap(output) {
+  if (!window.ThermalEngine) return;
+  const data = ThermalEngine.generate(output.components, output.auto_added_components);
+  const canvas = document.getElementById("thermal-canvas");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = "#070b14"; ctx.fillRect(0, 0, W, H);
+
+  const { grid, maxTemp, placed, hotspots, recommendations, gridSize } = data;
+  const cw = W / gridSize, ch = H / gridSize;
+
+  // Draw heat cells
+  for (let gy = 0; gy < gridSize; gy++) {
+    for (let gx = 0; gx < gridSize; gx++) {
+      const v = maxTemp > 0 ? grid[gy][gx] / maxTemp : 0;
+      ctx.fillStyle = heatColor(v);
+      ctx.fillRect(gx * cw, gy * ch, cw, ch);
+    }
+  }
+
+  // Draw component dots
+  for (const comp of placed) {
+    const px = (comp.x / data.boardSizeMm) * W;
+    const py = (comp.y / data.boardSizeMm) * H;
+    const r = Math.max(4, Math.sqrt(comp.mw) / 4);
+    ctx.beginPath();
+    ctx.arc(px, py, r, 0, Math.PI * 2);
+    ctx.fillStyle = "#ffffff";
+    ctx.fill();
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    // Label
+    ctx.fillStyle = "#fff";
+    ctx.font = "9px Inter, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText((comp.name || comp.ref || "").substring(0, 8), px, py - r - 2);
+  }
+
+  // Hotspot list
+  const hl = document.getElementById("hotspot-list");
+  if (hl) hl.innerHTML = hotspots.map(h => `
+    <div class="hotspot-item hotspot-${h.risk.toLowerCase()}">
+      <span class="hs-name">${escHtml(h.name)}</span>
+      <span class="hs-mw">${h.mw}mW</span>
+      <span class="hs-risk">${h.risk}</span>
+    </div>`).join("");
+
+  // Recommendations
+  const recs = document.getElementById("thermal-recs");
+  if (recs) {
+    recs.innerHTML = `<h3 class="thermal-rec-title">Recommendations</h3>` +
+      recommendations.map(r => `
+        <div class="thermal-rec-card thermal-priority-${r.priority}">
+          <span class="rec-icon">${r.icon}</span>
+          <span>${escHtml(r.text)}</span>
+        </div>`).join("");
+  }
+}
+
+function heatColor(v) {
+  const r = Math.round(Math.min(255, v * 2 * 255));
+  const g = Math.round(Math.min(255, (1 - Math.abs(v - 0.5) * 2) * 255 * 0.8));
+  const b = Math.round(Math.max(0, (1 - v * 2) * 200));
+  return `rgba(${r},${g},${b},0.85)`;
+}
+
+// ═══════════════════════════════════════════════════════════
+// FEATURE 7: BOM OPTIMIZER UI
+// ═══════════════════════════════════════════════════════════
+function initBOMOptimizer() {
+  document.getElementById("bom-optimize-btn")?.addEventListener("click", () => {
+    if (!State.lastOutput) { showToast("Generate a design first", "error"); return; }
+    const inst = document.getElementById("bom-instruction")?.value || "JLCPCB basic only";
+    const result = BOMOptimizer.optimize(State.lastOutput.components, State.lastOutput.auto_added_components, inst);
+    renderBOMResult(result);
+    showToast(`BOM optimized — saved $${result.savings_usd} (${result.savings_pct}%)`, "success");
+  });
+}
+
+function renderBOMResult(r) {
+  const el = document.getElementById("bom-result");
+  if (!el) return;
+  el.innerHTML = `
+    <div class="bom-summary">
+      <div class="bom-stat"><span class="bom-stat-val">$${r.original_cost}</span><span class="bom-stat-lbl">Original Cost</span></div>
+      <div class="bom-arrow">→</div>
+      <div class="bom-stat"><span class="bom-stat-val bom-green">$${r.optimized_cost}</span><span class="bom-stat-lbl">Optimized Cost</span></div>
+      <div class="bom-saving-badge">-$${r.savings_usd} (${r.savings_pct}%)</div>
+    </div>
+    ${r.warnings.map(w => `<div class="bom-warning">⚠ ${escHtml(w)}</div>`).join("")}
+    ${r.substitutions.length > 0 ? `
+      <table class="data-table" style="margin-top:12px">
+        <thead><tr><th>Ref</th><th>Original</th><th>Replacement</th><th>LCSC</th><th>Saving</th><th>Reason</th></tr></thead>
+        <tbody>
+          ${r.substitutions.map(s => `
+            <tr class="bom-sub-row">
+              <td><span class="ref-badge">${escHtml(s.ref)}</span></td>
+              <td><span class="bom-old">${escHtml(s.original)}</span></td>
+              <td><span class="bom-new">${escHtml(s.replacement)}</span></td>
+              <td><code class="fp-code">${escHtml(s.lcsc)}</code></td>
+              <td class="bom-green">$${s.saving_usd}</td>
+              <td class="comp-reason">${escHtml(s.reason)}</td>
+            </tr>`).join("")}
+        </tbody>
+      </table>` : `<p style="color:var(--text-muted);margin-top:12px">No substitutions made — design already uses optimal parts.</p>`}
+  `;
+}
+
+// ═══════════════════════════════════════════════════════════
+// FEATURE 8: SI ADVISOR RENDERER
+// ═══════════════════════════════════════════════════════════
+function renderSIAdvisor(output) {
+  if (!window.SIAdvisor) return;
+  const result = SIAdvisor.analyze(output.components, output.nets, output.constraints || {});
+
+  const gradeColor = { A: "#34d399", B: "#4fc3f7", C: "#fbbf24", D: "#f97316", F: "#ef4444" };
+  const gc = gradeColor[result.grade] || "#94a3b8";
+
+  const scoreCard = document.getElementById("si-score-card");
+  if (scoreCard) scoreCard.innerHTML = `
+    <div class="si-grade-ring" style="--grade-color:${gc}">
+      <div class="si-grade-letter">${result.grade}</div>
+      <div class="si-grade-score">${result.overall_score}/100</div>
+    </div>
+    <div class="si-grade-label">Signal Integrity Score</div>`;
+
+  const netsTable = document.getElementById("si-nets-table");
+  if (netsTable) netsTable.innerHTML = `
+    <table class="data-table">
+      <thead><tr><th>Net</th><th>Class</th><th>Trace (mm)</th><th>Impedance</th><th>Target</th><th>Score</th></tr></thead>
+      <tbody>${result.nets_scored.map(n => `
+        <tr>
+          <td>${escHtml(n.name)}</td>
+          <td><span class="net-class-badge" style="background:${n.color}22;color:${n.color};border:1px solid ${n.color}44">${n.class}</span></td>
+          <td>${n.trace_mm}mm</td>
+          <td>${n.impedance ? n.impedance + "Ω" : "—"}</td>
+          <td>${n.target_z ? n.target_z + "Ω" : "—"}</td>
+          <td><div class="si-score-bar"><div class="si-score-fill" style="width:${n.score}%;background:${n.score>70?"#34d399":n.score>40?"#fbbf24":"#ef4444"}"></div></div></td>
+        </tr>`).join("")}
+      </tbody>
+    </table>`;
+
+  const antChecks = document.getElementById("si-antenna-checks");
+  if (antChecks) antChecks.innerHTML = `
+    <h3 class="section-title" style="margin:16px 0 10px">Antenna & RF Checks</h3>
+    <div class="check-list">
+      ${result.antenna_checks.map(c => `
+        <div class="check-item">
+          <span class="check-icon check-${c.status === "pass" ? "pass" : c.status === "fail" ? "fail" : "warn"}">${c.status === "pass" ? "✓" : c.status === "fail" ? "✗" : "⚠"}</span>
+          <span style="flex:1">${escHtml(c.check)}</span>
+          <span style="font-size:11px;color:var(--text-muted)">${escHtml(c.note)}</span>
+        </div>`).join("")}
+    </div>`;
+
+  const siWarn = document.getElementById("si-warnings");
+  if (siWarn) siWarn.innerHTML = result.warnings.map(w => `
+    <div class="si-warning-card si-sev-${w.severity}">
+      <span class="si-warn-net">${escHtml(w.net)}</span>: ${escHtml(w.msg)}
+    </div>`).join("");
+}
+
+// ═══════════════════════════════════════════════════════════
+// FEATURE 9: DNA FINGERPRINT UI
+// ═══════════════════════════════════════════════════════════
+function initDNAPanel() {
+  document.getElementById("dna-toggle")?.addEventListener("click", () => {
+    const body = document.getElementById("dna-body");
+    const btn = document.getElementById("dna-toggle");
+    if (body) { body.classList.toggle("hidden"); btn.textContent = body.classList.contains("hidden") ? "▼" : "▲"; }
+  });
+
+  document.getElementById("dna-analyze-btn")?.addEventListener("click", () => {
+    const raw = document.getElementById("dna-input")?.value || "";
+    if (!raw.trim()) {
+      // Use current design if available
+      if (!State.lastOutput) { showToast("Generate a design first or paste component/net info", "error"); return; }
+      const r = DNAEngine.fingerprint(State.lastOutput.components, State.lastOutput.nets);
+      renderDNAResult(r);
+    } else {
+      const parts = raw.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
+      const netsStart = parts.findIndex(p => p.toLowerCase().startsWith("net"));
+      const comps = netsStart >= 0 ? parts.slice(0, netsStart) : parts;
+      const nets = netsStart >= 0 ? parts.slice(netsStart).map(n => ({ name: n })) : [];
+      const r = DNAEngine.fingerprint(comps.map(c => ({ name: c, type: c })), nets);
+      renderDNAResult(r);
+    }
+  });
+}
+
+function renderDNAResult(r) {
+  const el = document.getElementById("dna-result");
+  if (!el) return;
+  el.classList.remove("hidden");
+  if (!r.match) {
+    el.innerHTML = `<div class="dna-no-match">🔍 ${escHtml(r.explanation)}</div>`;
+    return;
+  }
+  el.innerHTML = `
+    <div class="dna-match-card">
+      <div class="dna-match-header">
+        <span class="dna-match-name">${escHtml(r.match)}</span>
+        <div class="dna-conf-bar"><div class="dna-conf-fill" style="width:${r.confidence}%"></div></div>
+        <span class="dna-conf-val">${r.confidence}%</span>
+      </div>
+      <p class="dna-explanation">${escHtml(r.explanation)}</p>
+      <details class="dna-details">
+        <summary>⚡ Common Failure Modes</summary>
+        <ul>${r.failure_modes.map(f => `<li>${escHtml(f)}</li>`).join("")}</ul>
+      </details>
+      <details class="dna-details" open>
+        <summary>💡 Optimization Tips</summary>
+        <ul>${r.tips.map(t => `<li>${escHtml(t)}</li>`).join("")}</ul>
+      </details>
+      ${r.alternatives.length > 0 ? `<div class="dna-alts">Also matches: ${r.alternatives.map(a => `<span class="dna-alt-chip">${escHtml(a.name)} (${a.confidence}%)</span>`).join("")}</div>` : ""}
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════
+// FEATURE 10: DFM SCORECARD
+// ═══════════════════════════════════════════════════════════
+function initDFMScorecard() {
+  State.currentDFMFab = "jlcpcb";
+  document.getElementById("dfm-fab-selector")?.querySelectorAll(".dfm-fab-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".dfm-fab-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      State.currentDFMFab = btn.dataset.fab;
+      if (State.lastOutput) renderDFMScorecard(State.lastOutput, State.currentDFMFab);
+    });
+  });
+}
+
+function renderDFMScorecard(output, fabKey = "jlcpcb") {
+  if (!window.DFMEngine) return;
+  const r = DFMEngine.score(output, fabKey);
+
+  const gradeColor = { A: "#34d399", B: "#4fc3f7", C: "#fbbf24", D: "#f97316", F: "#ef4444" };
+  const gc = gradeColor[r.grade] || "#94a3b8";
+
+  const gradeRow = document.getElementById("dfm-grade-row");
+  if (gradeRow) gradeRow.innerHTML = `
+    <div class="dfm-grade-badge" style="border-color:${gc};color:${gc}">${r.grade}</div>
+    <div class="dfm-score-info">
+      <div class="dfm-score-num" style="color:${gc}">${r.score_pct}%</div>
+      <div class="dfm-fab-name">${escHtml(r.fab_name)}</div>
+      <div class="dfm-checks-summary">${r.checks.filter(c=>c.status==="pass").length}/${r.checks.length} checks passed</div>
+    </div>`;
+
+  const checks = document.getElementById("dfm-checks");
+  if (checks) checks.innerHTML = `
+    <div class="check-list">
+      ${r.checks.map(c => `
+        <div class="check-item">
+          <span class="check-icon check-${c.status === "pass" ? "pass" : c.status === "fail" ? "fail" : "warn"}">${c.status === "pass" ? "✓" : c.status === "fail" ? "✗" : "⚠"}</span>
+          <span style="flex:1;font-weight:${c.critical ? 600 : 400}">${escHtml(c.name)}</span>
+          <span style="font-size:11px;color:var(--text-muted)">${escHtml(c.note)}</span>
+        </div>`).join("")}
+    </div>`;
+
+  const recs = document.getElementById("dfm-recommendations");
+  if (recs) recs.innerHTML = `
+    <h3 class="section-title" style="margin:16px 0 10px">Recommendations</h3>
+    ${r.recommendations.map(rec => `<div class="dfm-rec">${escHtml(rec)}</div>`).join("")}`;
+}
+
+// ═══════════════════════════════════════════════════════════
+// FEATURE 12: FIRMWARE GENERATOR UI
+// ═══════════════════════════════════════════════════════════
+function initFirmwareGenerator() {
+  State.currentFWFramework = "stm32";
+  State.fwFiles = null;
+  State.currentFWTab = "pins";
+
+  document.getElementById("fw-framework-select")?.querySelectorAll(".fw-fw-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".fw-fw-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      State.currentFWFramework = btn.dataset.fw;
+    });
+  });
+
+  document.querySelectorAll(".fw-tab").forEach(tab => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".fw-tab").forEach(t => t.classList.remove("active"));
+      tab.classList.add("active");
+      State.currentFWTab = tab.dataset.fwtab;
+      showFWTab();
+    });
+  });
+
+  document.getElementById("fw-generate-btn")?.addEventListener("click", () => {
+    if (!State.lastOutput) { showToast("Generate a design first", "error"); return; }
+    State.fwFiles = FirmwareEngine.generate(State.lastOutput, State.currentFWFramework);
+    showFWTab();
+    showToast("Firmware stubs generated ✓", "success");
+  });
+
+  document.getElementById("fw-download-btn")?.addEventListener("click", () => {
+    if (!State.fwFiles) { showToast("Click Generate Stubs first", "error"); return; }
+    // Download each file individually
+    const name = (State.lastOutput?.project_name || "project").replace(/\s/g, "_").toLowerCase();
+    Object.entries(State.fwFiles).forEach(([fname, content]) => {
+      const blob = new Blob([content], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `${name}_${fname}`;
+      a.click(); URL.revokeObjectURL(url);
+    });
+    showToast(`Downloaded ${Object.keys(State.fwFiles).length} firmware files ✓`, "success");
+  });
+}
+
+function showFWTab() {
+  const tabMap = { pins: "pins.h", hal_h: "hal_stubs.h", hal_c: "hal_stubs.c", test: "test_harness.c", yaml: "hardware.yaml" };
+  const key = tabMap[State.currentFWTab] || "pins.h";
+  const viewer = document.getElementById("fw-code-viewer");
+  if (viewer && State.fwFiles) {
+    viewer.textContent = State.fwFiles[key] || "// File not available";
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// FEATURE 11: BLOCK DIAGRAM EDITOR
+// ═══════════════════════════════════════════════════════════
+function initBlockEditor() {
+  const BE = {
+    blocks: [], connections: [], selectedId: null,
+    mode: "select", connFrom: null, idCounter: 0,
+    svgNS: "http://www.w3.org/2000/svg"
+  };
+  window._BE = BE;
+
+  const svg = document.getElementById("be-canvas");
+  const blocksLayer = document.getElementById("be-blocks-layer");
+  const connsLayer = document.getElementById("be-connections-layer");
+  const status = document.getElementById("be-status");
+  if (!svg) return;
+
+  const setMode = (m) => {
+    BE.mode = m; BE.connFrom = null;
+    document.querySelectorAll(".be-tool-btn").forEach(b => b.classList.remove("active"));
+    document.getElementById(`be-tool-${m}`)?.classList.add("active");
+    svg.style.cursor = m === "connect" ? "crosshair" : m === "delete" ? "no-drop" : "default";
+    status.textContent = m === "connect" ? "Click a block to start a connection, then click another to finish." :
+                         m === "delete" ? "Click a block or connection to delete it." :
+                         "Drag blocks to position. Use toolbar to connect or delete.";
+  };
+
+  document.getElementById("be-tool-select")?.addEventListener("click", () => setMode("select"));
+  document.getElementById("be-tool-connect")?.addEventListener("click", () => setMode("connect"));
+  document.getElementById("be-tool-delete")?.addEventListener("click", () => setMode("delete"));
+
+  document.querySelectorAll(".be-palette-btn[data-type]").forEach(btn => {
+    btn.addEventListener("click", () => addBlock(btn.dataset.type));
+  });
+
+  document.getElementById("be-clear-btn")?.addEventListener("click", () => {
+    BE.blocks = []; BE.connections = []; BE.selectedId = null;
+    renderBE();
+  });
+
+  document.getElementById("be-auto-layout-btn")?.addEventListener("click", () => {
+    const cols = Math.ceil(Math.sqrt(BE.blocks.length));
+    BE.blocks.forEach((b, i) => {
+      b.x = 80 + (i % cols) * 160;
+      b.y = 80 + Math.floor(i / cols) * 130;
+    });
+    renderBE();
+  });
+
+  document.getElementById("be-expand-btn")?.addEventListener("click", () => {
+    const b = BE.blocks.find(bl => bl.id === BE.selectedId);
+    if (!b) { showToast("Select a block first", "error"); return; }
+    showToast(`Expanding ${b.label}... generating sub-design`, "success");
+    // Close editor and auto-fill the main form
+    document.getElementById("block-editor-overlay").classList.add("hidden");
+    document.getElementById("mode-natural").click();
+    document.getElementById("project-desc").value = `${b.type} block: ${b.label}. Generate complete sub-circuit with all required components.`;
+    document.getElementById("project-name").value = b.label;
+  });
+
+  document.getElementById("be-export-btn")?.addEventListener("click", () => {
+    if (BE.blocks.length === 0) { showToast("Add blocks first", "error"); return; }
+    const diagram = { blocks: BE.blocks, connections: BE.connections };
+    const result = BlockDiagramEngine.exportToKicadSch(diagram);
+    const blob = new Blob([result.top_sch], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = "top.kicad_sch";
+    a.click(); URL.revokeObjectURL(url);
+    showToast("Exported top.kicad_sch ✓", "success");
+  });
+
+  function addBlock(type) {
+    const bt = BlockDiagramEngine.BLOCK_TYPES[type] || { icon: "📦", color: "#94a3b8", defaultLabel: type };
+    const id = `b${++BE.idCounter}`;
+    const svgRect = svg.getBoundingClientRect();
+    BE.blocks.push({ id, type, label: bt.defaultLabel, icon: bt.icon, color: bt.color, x: 60 + Math.random() * (svgRect.width - 200), y: 60 + Math.random() * (svgRect.height - 180) });
+    setMode("select");
+    renderBE();
+  }
+
+  function selectBlock(id) {
+    BE.selectedId = id;
+    renderBE();
+    const b = BE.blocks.find(bl => bl.id === id);
+    if (b) {
+      const side = document.getElementById("be-side-content");
+      if (side) side.innerHTML = `
+        <div class="be-prop-group">
+          <label class="form-label">Label</label>
+          <input class="form-input" id="be-prop-label" value="${escHtml(b.label)}" />
+        </div>
+        <div class="be-prop-group">
+          <label class="form-label">Type</label>
+          <div style="color:var(--accent-cyan);font-weight:600">${b.type}</div>
+        </div>
+        <div class="be-prop-group" style="margin-top:8px">
+          <button class="action-btn" id="be-prop-expand-btn" style="width:100%">⚡ Generate Sub-Circuit</button>
+        </div>`;
+      document.getElementById("be-prop-label")?.addEventListener("input", e => {
+        b.label = e.target.value; renderBE();
+      });
+      document.getElementById("be-prop-expand-btn")?.addEventListener("click", () => {
+        document.getElementById("be-expand-btn").click();
+      });
+    }
+  }
+
+  function renderBE() {
+    // Clear layers
+    while (blocksLayer.firstChild) blocksLayer.removeChild(blocksLayer.firstChild);
+    while (connsLayer.firstChild) connsLayer.removeChild(connsLayer.firstChild);
+
+    // Draw connections
+    const connType = document.getElementById("be-conn-type")?.value || "SPI";
+    const ct = BlockDiagramEngine.CONN_TYPES[connType] || { color: "#4fc3f7", width: 2 };
+    for (const conn of BE.connections) {
+      const fromB = BE.blocks.find(b => b.id === conn.from);
+      const toB = BE.blocks.find(b => b.id === conn.to);
+      if (!fromB || !toB) continue;
+      const cc = BlockDiagramEngine.CONN_TYPES[conn.type] || ct;
+      const line = document.createElementNS(BE.svgNS, "path");
+      const mx = (fromB.x + 80 + toB.x + 80) / 2;
+      line.setAttribute("d", `M${fromB.x+80},${fromB.y+40} C${mx},${fromB.y+40} ${mx},${toB.y+40} ${toB.x+80},${toB.y+40}`);
+      line.setAttribute("stroke", cc.color);
+      line.setAttribute("stroke-width", cc.width);
+      line.setAttribute("fill", "none");
+      line.setAttribute("marker-end", "url(#arrowhead)");
+      line.setAttribute("opacity", "0.8");
+      connsLayer.appendChild(line);
+      // Label
+      const txt = document.createElementNS(BE.svgNS, "text");
+      txt.setAttribute("x", mx); txt.setAttribute("y", (fromB.y + 40 + toB.y + 40)/2 - 6);
+      txt.setAttribute("text-anchor", "middle"); txt.setAttribute("fill", cc.color);
+      txt.setAttribute("font-size", "10"); txt.setAttribute("font-family", "Inter, sans-serif");
+      txt.textContent = conn.type || connType;
+      connsLayer.appendChild(txt);
+    }
+
+    // Draw blocks
+    for (const b of BE.blocks) {
+      const g = document.createElementNS(BE.svgNS, "g");
+      g.setAttribute("transform", `translate(${b.x},${b.y})`);
+      g.setAttribute("cursor", "grab");
+      g.style.userSelect = "none";
+
+      const rect = document.createElementNS(BE.svgNS, "rect");
+      rect.setAttribute("width", "160"); rect.setAttribute("height", "80");
+      rect.setAttribute("rx", "12"); rect.setAttribute("ry", "12");
+      rect.setAttribute("fill", b.color + "18");
+      rect.setAttribute("stroke", b.id === BE.selectedId ? "#fff" : b.color);
+      rect.setAttribute("stroke-width", b.id === BE.selectedId ? "2.5" : "1.5");
+      g.appendChild(rect);
+
+      const icon = document.createElementNS(BE.svgNS, "text");
+      icon.setAttribute("x", "80"); icon.setAttribute("y", "34");
+      icon.setAttribute("text-anchor", "middle"); icon.setAttribute("font-size", "20");
+      icon.textContent = b.icon;
+      g.appendChild(icon);
+
+      const label = document.createElementNS(BE.svgNS, "text");
+      label.setAttribute("x", "80"); label.setAttribute("y", "60");
+      label.setAttribute("text-anchor", "middle"); label.setAttribute("fill", "#e2e8f0");
+      label.setAttribute("font-size", "11"); label.setAttribute("font-family", "Inter, sans-serif");
+      label.setAttribute("font-weight", "600");
+      label.textContent = b.label.substring(0, 18);
+      g.appendChild(label);
+
+      const typeBadge = document.createElementNS(BE.svgNS, "text");
+      typeBadge.setAttribute("x", "80"); typeBadge.setAttribute("y", "73");
+      typeBadge.setAttribute("text-anchor", "middle"); typeBadge.setAttribute("fill", b.color);
+      typeBadge.setAttribute("font-size", "9"); typeBadge.setAttribute("font-family", "Inter, sans-serif");
+      typeBadge.textContent = b.type;
+      g.appendChild(typeBadge);
+
+      // Events
+      let dragging = false, ox = 0, oy = 0;
+      g.addEventListener("mousedown", e => {
+        if (BE.mode === "delete") {
+          BE.blocks = BE.blocks.filter(bl => bl.id !== b.id);
+          BE.connections = BE.connections.filter(c => c.from !== b.id && c.to !== b.id);
+          renderBE(); return;
+        }
+        if (BE.mode === "connect") {
+          if (!BE.connFrom) {
+            BE.connFrom = b.id;
+            status.textContent = `Connected from ${b.label} — now click another block`;
+          } else if (BE.connFrom !== b.id) {
+            BE.connections.push({ from: BE.connFrom, to: b.id, type: document.getElementById("be-conn-type")?.value || "SPI" });
+            BE.connFrom = null;
+            setMode("select");
+            renderBE();
+          }
+          return;
+        }
+        dragging = true;
+        ox = e.clientX - b.x; oy = e.clientY - b.y;
+        selectBlock(b.id);
+        e.stopPropagation();
+      });
+      svg.addEventListener("mousemove", e => {
+        if (!dragging) return;
+        const svgRect = svg.getBoundingClientRect();
+        b.x = Math.max(0, Math.min(svgRect.width - 160, e.clientX - ox));
+        b.y = Math.max(0, Math.min(svgRect.height - 80, e.clientY - oy));
+        renderBE();
+      });
+      svg.addEventListener("mouseup", () => { dragging = false; });
+
+      blocksLayer.appendChild(g);
+    }
+  }
+
+  // Click on empty canvas deselects
+  svg.addEventListener("click", e => {
+    if (e.target === svg || e.target.tagName === "svg") { BE.selectedId = null; renderBE(); }
+  });
 }

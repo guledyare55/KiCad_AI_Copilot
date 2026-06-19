@@ -929,3 +929,147 @@ body {
   background: var(--bg-card);
   border-radius: 0 0 16px 16px;
 }
+
+/* ─── New Tab Badge Colors ───────────────────────────────── */
+.tab-btn-hot.active  { color: #f97316; border-color: #f97316; }
+.tab-btn-green.active { color: #34d399; border-color: #34d399; }
+.tab-btn-blue.active  { color: #4fc3f7; border-color: #4fc3f7; }
+.tab-btn-fab.active   { color: #a78bfa; border-color: #a78bfa; }
+.tab-btn-fw.active    { color: #34d399; border-color: #34d399; }
+.tab-btn-hot  { color: #f9731688; }
+.tab-btn-green { color: #34d39988; }
+.tab-btn-blue  { color: #4fc3f788; }
+.tab-btn-fab   { color: #a78bfa88; }
+.tab-btn-fw    { color: #34d39988; }
+
+/* ─── check-warn ─────────────────────────────────────────── */
+.check-warn { color: var(--accent-amber); background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.25); }
+
+/* ─── Feature 6: Thermal Heatmap ────────────────────────── */
+.thermal-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.thermal-canvas-wrap { display: flex; flex-direction: column; gap: 10px; }
+.thermal-canvas { border-radius: 10px; border: 1px solid var(--border-subtle); width: 100%; }
+.thermal-legend { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-muted); }
+.legend-bar { flex: 1; height: 8px; border-radius: 4px; background: linear-gradient(to right, #0000c8, #00c800, #ffff00, #ff8800, #ff0000); }
+.legend-label { font-weight: 600; }
+.hotspot-list { display: flex; flex-direction: column; gap: 6px; }
+.hotspot-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; font-size: 12px; }
+.hotspot-high   { background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.3); }
+.hotspot-medium { background: rgba(249,115,22,0.12); border: 1px solid rgba(249,115,22,0.3); }
+.hotspot-low    { background: rgba(250,204,21,0.12); border: 1px solid rgba(250,204,21,0.3); }
+.hs-name { flex: 1; font-weight: 600; color: var(--text-primary); }
+.hs-mw   { color: var(--text-muted); }
+.hs-risk { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.08); }
+.thermal-rec-title { font-size: 13px; font-weight: 700; color: var(--text-primary); margin: 0 0 10px; }
+.thermal-recs { display: flex; flex-direction: column; gap: 8px; }
+.thermal-rec-card { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 10px; font-size: 12px; }
+.thermal-priority-critical { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.25); }
+.thermal-priority-high     { background: rgba(249,115,22,0.1); border: 1px solid rgba(249,115,22,0.25); }
+.thermal-priority-medium   { background: rgba(250,204,21,0.08); border: 1px solid rgba(250,204,21,0.2); }
+.thermal-priority-info     { background: rgba(79,195,247,0.08); border: 1px solid rgba(79,195,247,0.2); }
+.rec-icon { font-size: 16px; flex-shrink: 0; }
+@media (max-width: 900px) { .thermal-layout { grid-template-columns: 1fr; } }
+
+/* ─── Feature 7: BOM Optimizer ──────────────────────────── */
+.bom-optimizer { display: flex; flex-direction: column; gap: 14px; }
+.bom-input-row { display: flex; gap: 10px; align-items: center; }
+.bom-input-row .form-input { flex: 1; }
+.bom-summary { display: flex; align-items: center; gap: 16px; padding: 16px; background: var(--bg-card); border-radius: 10px; flex-wrap: wrap; }
+.bom-stat { display: flex; flex-direction: column; align-items: center; }
+.bom-stat-val { font-size: 22px; font-weight: 700; color: var(--text-primary); font-family: var(--font-mono); }
+.bom-stat-lbl { font-size: 11px; color: var(--text-muted); }
+.bom-arrow { font-size: 20px; color: var(--text-muted); }
+.bom-green { color: var(--accent-green) !important; }
+.bom-saving-badge { background: rgba(52,211,153,0.15); border: 1px solid rgba(52,211,153,0.3); color: var(--accent-green); padding: 6px 14px; border-radius: 20px; font-weight: 700; font-size: 14px; }
+.bom-warning { padding: 8px 12px; background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.25); border-radius: 8px; font-size: 12px; color: var(--accent-amber); }
+.bom-old { color: var(--accent-red); text-decoration: line-through; }
+.bom-new { color: var(--accent-green); font-weight: 600; }
+.bom-sub-row td { vertical-align: middle; }
+
+/* ─── Feature 8: SI Advisor ─────────────────────────────── */
+.si-layout { display: flex; flex-direction: column; gap: 16px; }
+.si-score-card { display: flex; align-items: center; gap: 16px; padding: 16px; background: var(--bg-card); border-radius: 12px; border: 1px solid var(--border-subtle); }
+.si-grade-ring { width: 70px; height: 70px; border-radius: 50%; border: 4px solid var(--grade-color, #4fc3f7); display: flex; flex-direction: column; align-items: center; justify-content: center; flex-shrink: 0; }
+.si-grade-letter { font-size: 22px; font-weight: 800; color: var(--grade-color, #4fc3f7); line-height: 1; }
+.si-grade-score { font-size: 10px; color: var(--text-muted); }
+.si-grade-label { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.net-class-badge { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
+.si-score-bar { width: 80px; height: 8px; background: rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden; }
+.si-score-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
+.si-warning-card { padding: 8px 12px; border-radius: 8px; font-size: 12px; margin-bottom: 6px; }
+.si-sev-critical { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #fca5a5; }
+.si-sev-high     { background: rgba(249,115,22,0.1); border: 1px solid rgba(249,115,22,0.3); color: #fdba74; }
+.si-warn-net { font-weight: 700; color: var(--accent-cyan); margin-right: 4px; }
+.si-antenna-checks, .si-warnings { }
+
+/* ─── Feature 9: DNA Fingerprint ────────────────────────── */
+.dna-panel { margin-top: 14px; border: 1px solid var(--border-subtle); border-radius: 12px; overflow: hidden; }
+.dna-panel-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--bg-card); cursor: pointer; }
+.dna-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.dna-toggle { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 12px; }
+.dna-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.dna-hint { font-size: 11px; color: var(--text-muted); margin: 0; }
+.dna-no-match { padding: 12px; color: var(--text-muted); font-size: 13px; }
+.dna-match-card { background: var(--bg-card); border: 1px solid var(--border-accent); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.dna-match-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dna-match-name { font-size: 14px; font-weight: 700; color: var(--accent-aqua); }
+.dna-conf-bar { flex: 1; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; }
+.dna-conf-fill { height: 100%; background: linear-gradient(90deg, #4fc3f7, #7fffd4); border-radius: 3px; transition: width 0.5s ease; }
+.dna-conf-val { font-size: 11px; color: var(--text-muted); min-width: 30px; text-align: right; }
+.dna-explanation { font-size: 12px; color: var(--text-secondary); margin: 0; line-height: 1.6; }
+.dna-details { font-size: 12px; color: var(--text-secondary); }
+.dna-details summary { cursor: pointer; font-weight: 600; color: var(--text-primary); padding: 4px 0; }
+.dna-details ul { margin: 6px 0 0 16px; }
+.dna-details li { margin-bottom: 4px; }
+.dna-alts { font-size: 11px; color: var(--text-muted); display: flex; gap: 6px; flex-wrap: wrap; }
+.dna-alt-chip { padding: 2px 8px; border-radius: 10px; background: rgba(255,255,255,0.06); border: 1px solid var(--border-subtle); }
+.dna-result { margin-top: 4px; }
+
+/* ─── Feature 10: DFM Scorecard ─────────────────────────── */
+.dfm-layout { display: flex; flex-direction: column; gap: 14px; }
+.dfm-fab-selector { display: flex; gap: 8px; }
+.dfm-fab-btn { padding: 8px 18px; border-radius: 8px; border: 1px solid var(--border-subtle); background: var(--bg-card); color: var(--text-secondary); font-weight: 600; font-size: 13px; cursor: pointer; transition: all 0.2s; }
+.dfm-fab-btn.active { background: rgba(79,195,247,0.12); border-color: var(--accent-cyan); color: var(--accent-cyan); }
+.dfm-grade-row { display: flex; align-items: center; gap: 20px; padding: 16px; background: var(--bg-card); border-radius: 12px; border: 1px solid var(--border-subtle); }
+.dfm-grade-badge { width: 64px; height: 64px; border-radius: 50%; border: 4px solid; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 800; flex-shrink: 0; }
+.dfm-score-info { display: flex; flex-direction: column; gap: 2px; }
+.dfm-score-num { font-size: 24px; font-weight: 700; line-height: 1; }
+.dfm-fab-name { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.dfm-checks-summary { font-size: 11px; color: var(--text-muted); }
+.dfm-rec { padding: 8px 12px; background: rgba(79,195,247,0.06); border-radius: 8px; font-size: 12px; color: var(--text-secondary); border-left: 3px solid var(--accent-cyan); }
+
+/* ─── Feature 12: Firmware Generator ────────────────────── */
+.fw-layout { display: flex; flex-direction: column; gap: 12px; }
+.fw-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.fw-framework-select { display: flex; gap: 6px; }
+.fw-fw-btn { padding: 6px 14px; border-radius: 20px; border: 1px solid var(--border-subtle); background: var(--bg-card); color: var(--text-secondary); font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+.fw-fw-btn.active { background: rgba(52,211,153,0.12); border-color: var(--accent-green); color: var(--accent-green); }
+.fw-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 8px; overflow-x: auto; }
+.fw-tab { padding: 4px 12px; border-radius: 6px; border: 1px solid transparent; background: transparent; color: var(--text-muted); font-size: 11px; font-family: var(--font-mono); cursor: pointer; white-space: nowrap; transition: all 0.2s; }
+.fw-tab.active { background: rgba(52,211,153,0.1); border-color: var(--accent-green); color: var(--accent-green); }
+.fw-code-viewer-wrap { border: 1px solid var(--border-subtle); border-radius: 10px; overflow: hidden; }
+.fw-code-viewer { margin: 0; padding: 14px; background: #070b14; color: #a5f3fc; font-family: var(--font-mono); font-size: 11px; line-height: 1.65; max-height: 420px; overflow-y: auto; overflow-x: auto; white-space: pre; }
+
+/* ─── Feature 11: Block Diagram Editor ──────────────────── */
+.block-editor-overlay { position: fixed; inset: 0; z-index: 1100; background: var(--bg-base); display: flex; flex-direction: column; }
+.block-editor-overlay.hidden { display: none; }
+.block-editor-header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; background: var(--bg-surface); border-bottom: 1px solid var(--border-subtle); flex-shrink: 0; flex-wrap: wrap; }
+.block-editor-title { font-size: 16px; font-weight: 700; color: var(--text-primary); white-space: nowrap; }
+.block-editor-toolbar { display: flex; gap: 6px; align-items: center; flex: 1; }
+.be-tool-btn { padding: 6px 14px; border-radius: 8px; border: 1px solid var(--border-subtle); background: var(--bg-card); color: var(--text-secondary); font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+.be-tool-btn.active { background: rgba(79,195,247,0.12); border-color: var(--accent-cyan); color: var(--accent-cyan); }
+.be-conn-type { padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border-subtle); background: var(--bg-card); color: var(--text-secondary); font-size: 12px; cursor: pointer; }
+.block-editor-body { display: flex; flex: 1; overflow: hidden; }
+.be-palette { width: 160px; flex-shrink: 0; background: var(--bg-surface); border-right: 1px solid var(--border-subtle); padding: 12px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
+.be-palette-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); margin-top: 4px; }
+.be-palette-btn { padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border-subtle); background: var(--bg-card); color: var(--text-secondary); font-size: 12px; text-align: left; cursor: pointer; transition: all 0.2s; }
+.be-palette-btn:hover { border-color: var(--accent-cyan); color: var(--accent-cyan); background: rgba(79,195,247,0.08); }
+.be-legend { display: flex; flex-direction: column; gap: 4px; }
+.be-leg-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-secondary); }
+.be-leg-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.be-canvas-wrap { flex: 1; position: relative; overflow: hidden; }
+.be-canvas { width: 100%; height: 100%; background: radial-gradient(circle at 50% 50%, #0d1320 0%, #070b14 100%); background-image: radial-gradient(circle at 50% 50%, #0d1320 0%, #070b14 100%), repeating-linear-gradient(0deg, transparent, transparent 30px, rgba(255,255,255,0.02) 30px, rgba(255,255,255,0.02) 31px), repeating-linear-gradient(90deg, transparent, transparent 30px, rgba(255,255,255,0.02) 30px, rgba(255,255,255,0.02) 31px); }
+.be-status { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); background: rgba(13,19,32,0.9); border: 1px solid var(--border-subtle); padding: 6px 14px; border-radius: 20px; font-size: 11px; color: var(--text-muted); white-space: nowrap; pointer-events: none; }
+.be-side-panel { width: 220px; flex-shrink: 0; background: var(--bg-surface); border-left: 1px solid var(--border-subtle); padding: 14px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+.be-side-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); }
+.be-prop-group { display: flex; flex-direction: column; gap: 6px; }
