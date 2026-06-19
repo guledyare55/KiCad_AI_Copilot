@@ -35,6 +35,16 @@ def ts():
 # ═══════════════════════════════════════════════════════════
 def generate_project_file(design: dict, project_name: str) -> str:
     summary = design.get("project_summary", "KiCad AI Copilot Generated Design")
+    
+    # AI Constraint-Driven Routing Rules (Feature 5)
+    custom_rules = design.get("custom_kicad_rules", [])
+    custom_rules_str = ""
+    if custom_rules:
+        custom_rules_str = "version 1\n\n"
+        for cr in custom_rules:
+            custom_rules_str += f"# {cr.get('description', '')}\n"
+            custom_rules_str += f"{cr.get('rule', '')}\n\n"
+
     return json.dumps({
         "board": {
             "design_settings": {
@@ -58,6 +68,7 @@ def generate_project_file(design: dict, project_name: str) -> str:
                     "silk_text_thickness": 0.15,
                 },
                 "rules": {
+                    "custom_rules": custom_rules_str,
                     "min_clearance": 0.1,
                     "min_copper_edge_clearance": 0.2,
                     "min_hole_clearance": 0.1,

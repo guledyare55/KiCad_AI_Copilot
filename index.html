@@ -352,6 +352,105 @@
   <!-- Toast Notification -->
   <div class="toast" id="toast"></div>
 
+  <!-- Footprint Synthesizer FAB -->
+  <button class="fp-fab" id="fp-fab-btn" title="Open Footprint Synthesizer">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <rect x="3" y="3" width="7" height="7" rx="1"/>
+      <rect x="14" y="3" width="7" height="7" rx="1"/>
+      <rect x="3" y="14" width="7" height="7" rx="1"/>
+      <rect x="14" y="14" width="7" height="7" rx="1"/>
+    </svg>
+    <span>Footprint Synth</span>
+  </button>
+
+  <!-- Footprint Synthesizer Modal -->
+  <div class="modal-overlay hidden" id="fp-modal-overlay">
+    <div class="modal-panel" id="fp-modal">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <div class="modal-icon">📐</div>
+          <div>
+            <h2 class="modal-title">Footprint Synthesizer</h2>
+            <p class="modal-subtitle">Generate a <code>.kicad_mod</code> file from package dimensions</p>
+          </div>
+        </div>
+        <button class="modal-close" id="fp-modal-close">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Package Presets -->
+        <div class="form-group">
+          <label class="form-label">Package Presets</label>
+          <div class="fp-presets" id="fp-presets">
+            <button class="fp-preset-btn active" data-preset="SOIC-8">SOIC-8</button>
+            <button class="fp-preset-btn" data-preset="SOIC-16">SOIC-16</button>
+            <button class="fp-preset-btn" data-preset="TSSOP-8">TSSOP-8</button>
+            <button class="fp-preset-btn" data-preset="TSSOP-16">TSSOP-16</button>
+            <button class="fp-preset-btn" data-preset="QFN-16">QFN-16</button>
+            <button class="fp-preset-btn" data-preset="Custom">Custom</button>
+          </div>
+        </div>
+
+        <!-- Parameters Grid -->
+        <div class="fp-params-grid">
+          <div class="form-group">
+            <label class="form-label" for="fp-name">Footprint Name</label>
+            <input type="text" id="fp-name" class="form-input" value="SOIC-8" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="fp-pins">Pin Count</label>
+            <input type="number" id="fp-pins" class="form-input" value="8" min="2" max="256" step="2" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="fp-pitch">Pitch (mm)</label>
+            <input type="number" id="fp-pitch" class="form-input" value="1.27" min="0.3" max="5" step="0.01" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="fp-pad-w">Pad Width (mm)</label>
+            <input type="number" id="fp-pad-w" class="form-input" value="0.6" min="0.1" max="5" step="0.05" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="fp-pad-h">Pad Height (mm)</label>
+            <input type="number" id="fp-pad-h" class="form-input" value="1.55" min="0.1" max="5" step="0.05" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="fp-row-spacing">Row Spacing (mm)</label>
+            <input type="number" id="fp-row-spacing" class="form-input" value="5.4" min="1" max="30" step="0.1" />
+          </div>
+        </div>
+
+        <!-- Preview Area -->
+        <div class="fp-preview-section">
+          <div class="fp-preview-header">
+            <span class="fp-preview-label">Preview</span>
+            <button class="fp-refresh-btn" id="fp-refresh-btn">↻ Refresh</button>
+          </div>
+          <canvas class="fp-canvas" id="fp-canvas" width="400" height="260"></canvas>
+        </div>
+
+        <!-- Generated Code -->
+        <div class="fp-code-section">
+          <div class="fp-code-header">
+            <span class="fp-preview-label">Generated .kicad_mod</span>
+            <button class="raw-copy-btn" id="fp-copy-code-btn">Copy</button>
+          </div>
+          <pre class="fp-code-viewer" id="fp-code-viewer"><!-- click Generate to preview code --></pre>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="action-btn" id="fp-generate-btn">
+          <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z"/></svg>
+          Generate Preview
+        </button>
+        <button class="action-btn action-btn-primary" id="fp-download-btn">
+          <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z"/></svg>
+          Download .kicad_mod
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script src="engine.js"></script>
   <script src="app.js"></script>
 </body>

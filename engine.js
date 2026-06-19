@@ -59,6 +59,18 @@ const COMPONENT_DB = {
     bulk_cap: "4.7µF",
     reason: "STM32G031K8: Cortex-M0+, 64KB Flash, 8KB RAM, LQFP32"
   },
+  "nRF52833": {
+    ref_prefix: "U", type: "MCU", package: "QFN40",
+    footprint: "Package_DFN_QFN:QFN-40-1EP_5x5mm_P0.4mm_EP3.6x3.6mm",
+    lcsc: "C528711",
+    vcc_pins: ["VDD", "VDDH"],
+    gnd_pins: ["GND", "VSS"],
+    prog_iface: "SWD",
+    rf: "BLE5.1", antenna_required: true,
+    decoupling_per_pin: "100nF",
+    bulk_cap: "4.7µF",
+    reason: "nRF52833: BLE 5.1 SoC, Cortex-M4, auto-substituted for out-of-stock nRF52840."
+  },
   "ATMEGA328P": {
     ref_prefix: "U", type: "MCU", package: "TQFP32",
     footprint: "Package_QFP:TQFP-32_7x7mm_P0.8mm",
@@ -159,6 +171,12 @@ const COMPONENT_DB = {
     lcsc: "C92489",
     reason: "BME280: temperature/humidity/pressure, SPI+I2C, 2x2.5mm"
   },
+  "SHTC3": {
+    ref_prefix: "U", type: "sensor", package: "DFN4",
+    footprint: "Sensor_Humidity:Sensirion_DFN-4-1EP_2x2mm_P1mm_EP0.7x1.6mm",
+    lcsc: "C368407",
+    reason: "SHTC3: Auto-substituted for out-of-stock BME280. Note: Temp/Humidity only (no pressure)."
+  },
   "ICM-42688-P": {
     ref_prefix: "U", type: "sensor", package: "LGA14",
     footprint: "Package_LGA:LGA-14_3x3mm_P0.5mm",
@@ -184,6 +202,37 @@ const COMPONENT_DB = {
     footprint: "Battery:BatteryHolder_Keystone_3034_1x20mm",
     lcsc: "C70377",
     reason: "CR2032 battery holder, SMD/THT"
+  }
+};
+
+// ═══════════════════════════════════════════════════════════
+// LIVE SUPPLY CHAIN DATABASE (Feature 2 Mock)
+// ═══════════════════════════════════════════════════════════
+const SUPPLY_CHAIN_DB = {
+  "nRF52810": { in_stock: true, stock_qty: 45000, price: 1.25 },
+  "nRF52840": { in_stock: false, stock_qty: 0, price: 4.50, substitute: "nRF52833" }, // Out of stock example
+  "STM32G031K8": { in_stock: false, stock_qty: 0, price: 1.10, substitute: "ATMEGA328P" }, // Out of stock example
+  "ATMEGA328P": { in_stock: true, stock_qty: 120000, price: 1.80 },
+  "ESP32-S3": { in_stock: true, stock_qty: 85000, price: 2.10 },
+  "BME280": { in_stock: false, stock_qty: 0, price: 3.50, substitute: "SHTC3" }, // Out of stock example
+  "SHTC3": { in_stock: true, stock_qty: 15000, price: 1.20 }
+};
+
+// ═══════════════════════════════════════════════════════════
+// SNIPPET MODULES DATABASE (Feature 4: Sub-circuit injection)
+// ═══════════════════════════════════════════════════════════
+const MODULE_DB = {
+  "BUCK_3V3_1A": {
+    name: "3.3V 1A Buck Converter (TPS5430)",
+    snippet_id: "mod_tps5430_3v3",
+    description: "Pre-routed 3.3V buck converter block with optimal input/output capacitance loop area.",
+    provides_power: "3V3"
+  },
+  "USB_C_PD_SINK": {
+    name: "USB-C PD 15V Sink (FUSB302)",
+    snippet_id: "mod_fusb302_sink",
+    description: "Pre-routed USB-C PD sink controller to negotiate up to 15V from a PD charger.",
+    provides_power: "VBUS_15V"
   }
 };
 
@@ -218,7 +267,9 @@ class KiCadDesignEngine {
     this.autoComponents = [];
     this.nets = [];
     this.components = [];
+    this.modules = [];
     this.fpStandard = "commercial";
+    this.supplyChainWarnings = [];
   }
 
   // ── Public entry point ─────────────────────────────────
@@ -226,6 +277,15 @@ class KiCadDesignEngine {
     this.reset();
     const fpKey = this._resolveFpKey(input.constraints);
     this.fpStandard = fpKey;
+
+    // Resolve Snippet Modules
+    const descLower = (input.description || "").toLowerCase();
+    if (descLower.includes("pd sink") || descLower.includes("15v")) {
+      this.modules.push(MODULE_DB["USB_C_PD_SINK"]);
+    }
+    if (descLower.includes("buck") && descLower.includes("3.3v")) {
+      this.modules.push(MODULE_DB["BUCK_3V3_1A"]);
+    }
 
     const resolvedComponents = this._resolveComponents(input.components, input.description, input.constraints);
     this.components = resolvedComponents;
@@ -238,21 +298,43 @@ class KiCadDesignEngine {
 
     const powerTree = this._buildPowerTree(resolvedComponents, autoAdded, input.constraints);
     const pcbRules = this._generatePcbRules(resolvedComponents, input.constraints);
+    const customKicadRules = this._generateCustomRules(resolvedComponents, nets, input.constraints);
     const rfRules = this._generateRfRules(resolvedComponents);
     const footprintMap = this._buildFootprintMap(resolvedComponents, autoAdded, fpKey);
     const kicadActions = this._generateKiCadActions(resolvedComponents, autoAdded, nets);
     const validationChecklist = this._runValidation(resolvedComponents, autoAdded, nets, powerTree);
     const architecture = this._deriveArchitecture(resolvedComponents, input.constraints);
+    
+    // Inject supply chain warnings into the architecture summary
+    if (this.supplyChainWarnings.length > 0) {
+      architecture.core_components.push({
+        name: "Supply Chain Alerts",
+        role: "Critical: " + this.supplyChainWarnings.join(" | ")
+      });
+    }
+
+    // Inject module descriptions into architecture
+    if (this.modules.length > 0) {
+      for (const mod of this.modules) {
+        architecture.core_components.push({
+          name: mod.name,
+          role: "Pre-Routed Sub-circuit Snippet: " + mod.description
+        });
+      }
+    }
+
     const projectSummary = this._buildSummary(input, resolvedComponents, autoAdded);
 
     return {
       project_summary: projectSummary,
       architecture,
+      modules: this.modules,
       components: resolvedComponents,
       auto_added_components: autoAdded,
       nets,
       power_tree: powerTree,
       pcb_placement_rules: pcbRules,
+      custom_kicad_rules: customKicadRules,
       rf_or_critical_rules: rfRules,
       footprint_map: footprintMap,
       kiCad_actions: kicadActions,
@@ -265,6 +347,8 @@ class KiCadDesignEngine {
     this.autoComponents = [];
     this.nets = [];
     this.components = [];
+    this.modules = [];
+    this.supplyChainWarnings = [];
   }
 
   // ── Reference Designator ───────────────────────────────
@@ -288,7 +372,7 @@ class KiCadDesignEngine {
     const compList = componentList || [];
 
     // Parse component list strings like ["nRF52810", "CR2032", "LED", "BUTTON x2"]
-    const expanded = [];
+    let expanded = [];
     for (const comp of compList) {
       const match = comp.match(/^(.+?)\s+x(\d+)$/i);
       if (match) {
@@ -302,6 +386,22 @@ class KiCadDesignEngine {
     // Also infer from description if no explicit list
     if (expanded.length === 0) {
       this._inferFromDescription(descLower, expanded);
+    }
+
+    // Process substitutions based on Supply Chain API
+    for (let i = 0; i < expanded.length; i++) {
+      const name = expanded[i];
+      const dbEntry = this._lookupComponent(name);
+      
+      if (dbEntry) {
+        const canonical = dbEntry.canonical;
+        const supplyData = SUPPLY_CHAIN_DB[canonical];
+        
+        if (supplyData && !supplyData.in_stock && supplyData.substitute) {
+          this.supplyChainWarnings.push(`⚠️ ${canonical} is out of stock! Auto-substituted with ${supplyData.substitute}.`);
+          expanded[i] = supplyData.substitute; // Substitute in place
+        }
+      }
     }
 
     for (const name of expanded) {
@@ -799,6 +899,49 @@ class KiCadDesignEngine {
       applies_to: ["ALL"],
       description: "Use solid ground plane on bottom layer. Stitch ground vias every 5-8mm. Ensure no ground plane islands. Critical for RF and EMI performance."
     });
+
+    return rules;
+  }
+
+  // ── AI Constraint-Driven Auto-Routing Rules (Feature 5) ──
+  _generateCustomRules(components, nets, constraints) {
+    const customRules = [];
+    
+    // USB Differential Pair Constraints
+    if (nets.some(n => n.name === "USB_D+" || n.name === "USB_D-") || constraints?.power === "usb") {
+      customRules.push({
+        name: "USB_90Ohm_Diff",
+        rule: "(rule \"USB_DiffPair\"\n  (condition \"A.NetClass == 'USB'\")\n  (constraint diffpair_gap (min 0.15mm) (opt 0.2mm) (max 0.25mm))\n  (constraint track_width (min 0.2mm) (opt 0.25mm) (max 0.3mm))\n)",
+        description: "Enforces 90-ohm differential impedance for USB data lines based on standard JLC04161H-3313 stackup."
+      });
+    }
+
+    // RF 50 Ohm Impedance Constraints
+    const rfICs = components.filter(c => c._meta?.rf);
+    if (rfICs.length > 0) {
+      customRules.push({
+        name: "RF_50Ohm_Track",
+        rule: "(rule \"RF_50Ohm\"\n  (condition \"A.NetClass == 'RF'\")\n  (constraint track_width (min 0.3mm) (opt 0.35mm) (max 0.4mm))\n  (constraint clearance (min 0.2mm))\n)",
+        description: "Enforces 50-ohm coplanar waveguide dimensions for RF antenna traces."
+      });
+      customRules.push({
+        name: "RF_Keepout",
+        rule: "(rule \"RF_Keepout\"\n  (condition \"A.NetClass == 'RF'\")\n  (constraint zone_clearance (min 0.5mm))\n)",
+        description: "Keeps copper pours away from the RF trace to maintain coplanar impedance."
+      });
+    }
+
+    // High Current Power Constraints
+    if (constraints?.power === "mixed" || components.some(c => c.type === "power")) {
+      customRules.push({
+        name: "Power_Heavy_Tracks",
+        rule: "(rule \"Power_Tracks\"\n  (condition \"A.NetClass == 'Power'\")\n  (constraint track_width (min 0.5mm) (opt 0.6mm) (max 1.0mm))\n)",
+        description: "Enforces wider tracks for VCC/VBUS/3V3 nets to prevent voltage drop."
+      });
+    }
+
+    return customRules;
+  }
 
     if (hasRF) {
       const rfRef = components.find(c => c._meta?.antenna_required)?.ref || "U_RF";

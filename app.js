@@ -55,6 +55,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initTabButtons();
   initOutputActions();
   initGenerateButton();
+  initFootprintSynthesizer();
 });
 
 // ─── Mode Toggle ──────────────────────────────────────────
@@ -538,4 +539,255 @@ function showToast(msg, type = "") {
   toast.textContent = msg;
   toast.className = `toast ${type === "success" ? "toast-success" : type === "error" ? "toast-error" : ""} show`;
   setTimeout(() => toast.classList.remove("show"), 3500);
+}
+
+// ═══════════════════════════════════════════════════════════
+// PHASE 5: ZERO-CLICK FOOTPRINT SYNTHESIZER (Feature 3)
+// ═══════════════════════════════════════════════════════════
+
+const FP_PRESETS = {
+  "SOIC-8":   { name: "SOIC-8",   pins: 8,  pitch: 1.27, padW: 0.6,  padH: 1.55, rowSpacing: 5.4 },
+  "SOIC-16":  { name: "SOIC-16",  pins: 16, pitch: 1.27, padW: 0.6,  padH: 1.55, rowSpacing: 5.4 },
+  "TSSOP-8":  { name: "TSSOP-8",  pins: 8,  pitch: 0.65, padW: 0.38, padH: 1.1,  rowSpacing: 4.4 },
+  "TSSOP-16": { name: "TSSOP-16", pins: 16, pitch: 0.65, padW: 0.38, padH: 1.1,  rowSpacing: 4.4 },
+  "QFN-16":   { name: "QFN-16",   pins: 16, pitch: 0.65, padW: 0.35, padH: 0.7,  rowSpacing: 4.0 },
+  "Custom":   { name: "Custom",   pins: 8,  pitch: 1.27, padW: 0.6,  padH: 1.55, rowSpacing: 5.4 }
+};
+
+let fpCurrentCode = "";
+
+function initFootprintSynthesizer() {
+  // FAB
+  document.getElementById("fp-fab-btn")?.addEventListener("click", () => {
+    document.getElementById("fp-modal-overlay")?.classList.remove("hidden");
+    fpRenderPreview();
+  });
+
+  // Close modal
+  document.getElementById("fp-modal-close")?.addEventListener("click", () => {
+    document.getElementById("fp-modal-overlay")?.classList.add("hidden");
+  });
+  document.getElementById("fp-modal-overlay")?.addEventListener("click", (e) => {
+    if (e.target.id === "fp-modal-overlay") {
+      document.getElementById("fp-modal-overlay").classList.add("hidden");
+    }
+  });
+
+  // Preset buttons
+  document.getElementById("fp-presets")?.querySelectorAll(".fp-preset-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".fp-preset-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      const preset = FP_PRESETS[btn.dataset.preset];
+      if (!preset) return;
+      document.getElementById("fp-name").value = preset.name;
+      document.getElementById("fp-pins").value = preset.pins;
+      document.getElementById("fp-pitch").value = preset.pitch;
+      document.getElementById("fp-pad-w").value = preset.padW;
+      document.getElementById("fp-pad-h").value = preset.padH;
+      document.getElementById("fp-row-spacing").value = preset.rowSpacing;
+      fpRenderPreview();
+    });
+  });
+
+  // Generate & Refresh
+  document.getElementById("fp-generate-btn")?.addEventListener("click", fpRenderPreview);
+  document.getElementById("fp-refresh-btn")?.addEventListener("click", fpRenderPreview);
+
+  // Copy code
+  document.getElementById("fp-copy-code-btn")?.addEventListener("click", () => {
+    if (!fpCurrentCode) return;
+    navigator.clipboard.writeText(fpCurrentCode)
+      .then(() => showToast("Footprint code copied ✓", "success"))
+      .catch(() => showToast("Copy failed", "error"));
+  });
+
+  // Download
+  document.getElementById("fp-download-btn")?.addEventListener("click", () => {
+    if (!fpCurrentCode) { fpRenderPreview(); }
+    const name = document.getElementById("fp-name")?.value?.replace(/[^a-z0-9_\-]/gi, "_") || "footprint";
+    const blob = new Blob([fpCurrentCode], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `${name}.kicad_mod`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast(`Downloaded ${name}.kicad_mod ✓`, "success");
+  });
+
+  // Auto-refresh on input change
+  ["fp-name","fp-pins","fp-pitch","fp-pad-w","fp-pad-h","fp-row-spacing"].forEach(id => {
+    document.getElementById(id)?.addEventListener("change", fpRenderPreview);
+  });
+
+  // Initial render
+  fpRenderPreview();
+}
+
+function fpGetParams() {
+  return {
+    name:       document.getElementById("fp-name")?.value?.trim() || "Custom",
+    pins:       Math.max(2, Math.min(256, parseInt(document.getElementById("fp-pins")?.value) || 8)),
+    pitch:      parseFloat(document.getElementById("fp-pitch")?.value) || 1.27,
+    padW:       parseFloat(document.getElementById("fp-pad-w")?.value) || 0.6,
+    padH:       parseFloat(document.getElementById("fp-pad-h")?.value) || 1.55,
+    rowSpacing: parseFloat(document.getElementById("fp-row-spacing")?.value) || 5.4
+  };
+}
+
+function fpGenerateKicadMod(p) {
+  const { name, pins, pitch, padW, padH, rowSpacing } = p;
+  const halfPins = Math.floor(pins / 2);
+  const startX = -((halfPins - 1) * pitch) / 2;
+  const topY = -(rowSpacing / 2);
+  const botY = rowSpacing / 2;
+  const silkW = ((halfPins) * pitch) / 2 + 0.5;
+  const silkH = rowSpacing / 2 - padH / 2 - 0.1;
+
+  const uid = () => {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+      const r = Math.random() * 16 | 0;
+      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+  };
+
+  let lines = [];
+  lines.push(`(footprint "${name}"`);
+  lines.push(`  (version 20221018)`);
+  lines.push(`  (generator "kicad_ai_copilot")`);
+  lines.push(`  (attr smd)`);
+  lines.push(`  (fp_text reference "REF**" (at 0 ${(-(rowSpacing/2)-1.5).toFixed(3)}) (layer "F.SilkS") (uuid "${uid()}")`);
+  lines.push(`    (effects (font (size 1 1) (thickness 0.15)))`);
+  lines.push(`  )`);
+  lines.push(`  (fp_text value "${name}" (at 0 ${((rowSpacing/2)+1.5).toFixed(3)}) (layer "F.Fab") (uuid "${uid()}")`);
+  lines.push(`    (effects (font (size 1 1) (thickness 0.15)))`);
+  lines.push(`  )`);
+  // Courtyard
+  const crtW = silkW + 0.5;
+  const crtH = botY + padH/2 + 0.5;
+  lines.push(`  (fp_rect (start ${(-crtW).toFixed(3)} ${(-crtH).toFixed(3)}) (end ${crtW.toFixed(3)} ${crtH.toFixed(3)}) (layer "F.CrtYd") (width 0.05) (uuid "${uid()}"))`);
+  // Fab outline
+  lines.push(`  (fp_rect (start ${(-silkW+0.1).toFixed(3)} ${(-silkH).toFixed(3)}) (end ${(silkW-0.1).toFixed(3)} ${silkH.toFixed(3)}) (layer "F.Fab") (width 0.1) (uuid "${uid()}"))`);
+  // Pin-1 mark
+  lines.push(`  (fp_circle (center ${(startX - 0.3).toFixed(3)} ${(topY - 0.5).toFixed(3)}) (end ${(startX - 0.1).toFixed(3)} ${(topY - 0.5).toFixed(3)}) (layer "F.SilkS") (width 0.12) (uuid "${uid()}"))`);
+  // Silk lines
+  lines.push(`  (fp_line (start ${(-silkW).toFixed(3)} ${(-silkH).toFixed(3)}) (end ${silkW.toFixed(3)} ${(-silkH).toFixed(3)}) (layer "F.SilkS") (width 0.12) (uuid "${uid()}"))`);
+  lines.push(`  (fp_line (start ${(-silkW).toFixed(3)} ${silkH.toFixed(3)}) (end ${silkW.toFixed(3)} ${silkH.toFixed(3)}) (layer "F.SilkS") (width 0.12) (uuid "${uid()}"))`);
+
+  // Pads
+  for (let i = 0; i < halfPins; i++) {
+    const px = startX + i * pitch;
+    const pinTop = i + 1;
+    const pinBot = pins - i;
+    // Top row (pins 1..N/2)
+    lines.push(`  (pad "${pinTop}" smd rect (at ${px.toFixed(3)} ${topY.toFixed(3)}) (size ${padW} ${padH}) (layers "F.Cu" "F.Paste" "F.Mask") (uuid "${uid()}"))`);
+    // Bottom row (pins N..N/2+1)
+    lines.push(`  (pad "${pinBot}" smd rect (at ${px.toFixed(3)} ${botY.toFixed(3)}) (size ${padW} ${padH}) (layers "F.Cu" "F.Paste" "F.Mask") (uuid "${uid()}"))`);
+  }
+  lines.push(`)`);
+  return lines.join("\n");
+}
+
+function fpRenderPreview() {
+  const p = fpGetParams();
+  fpCurrentCode = fpGenerateKicadMod(p);
+
+  // Update code viewer
+  const viewer = document.getElementById("fp-code-viewer");
+  if (viewer) viewer.textContent = fpCurrentCode;
+
+  // Canvas render
+  const canvas = document.getElementById("fp-canvas");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width;
+  const H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  // Dark background
+  ctx.fillStyle = "#0a0e1a";
+  ctx.fillRect(0, 0, W, H);
+
+  const { pins, pitch, padW, padH, rowSpacing } = p;
+  const halfPins = Math.floor(pins / 2);
+
+  // Scale: fit to canvas with margin
+  const bodySilkW = (halfPins * pitch) / 2 + 0.5;
+  const totalH = rowSpacing + padH + 2;
+  const scaleX = (W * 0.8) / (bodySilkW * 2 + 1);
+  const scaleY = (H * 0.8) / totalH;
+  const scale = Math.min(scaleX, scaleY, 20);
+  const cx = W / 2;
+  const cy = H / 2;
+
+  const toX = (mm) => cx + mm * scale;
+  const toY = (mm) => cy + mm * scale;
+  const sw = (mm) => mm * scale;
+
+  // Courtyard
+  const crtW = bodySilkW + 0.5;
+  const crtH = rowSpacing / 2 + padH / 2 + 0.5;
+  ctx.strokeStyle = "#ffff00";
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 3]);
+  ctx.strokeRect(toX(-crtW), toY(-crtH), sw(crtW * 2), sw(crtH * 2));
+  ctx.setLineDash([]);
+
+  // Fab body
+  const fbW = bodySilkW - 0.1;
+  const fbH = rowSpacing / 2 - padH / 2 - 0.1;
+  ctx.strokeStyle = "#4fc3f766";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(toX(-fbW), toY(-fbH), sw(fbW * 2), sw(fbH * 2));
+
+  // Silk outline
+  ctx.strokeStyle = "#aaffee";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(toX(-bodySilkW), toY(-fbH));
+  ctx.lineTo(toX(bodySilkW), toY(-fbH));
+  ctx.moveTo(toX(-bodySilkW), toY(fbH));
+  ctx.lineTo(toX(bodySilkW), toY(fbH));
+  ctx.stroke();
+
+  // Pin 1 indicator
+  const startX = -((halfPins - 1) * pitch) / 2;
+  ctx.fillStyle = "#7FFFD4";
+  ctx.beginPath();
+  ctx.arc(toX(startX - 0.3), toY(-rowSpacing / 2 - 0.5), 3, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Draw pads
+  for (let i = 0; i < halfPins; i++) {
+    const px = startX + i * pitch;
+    const isPin1 = i === 0;
+
+    // Top pad
+    ctx.fillStyle = isPin1 ? "#7FFFD4cc" : "#4fc3f7aa";
+    ctx.strokeStyle = isPin1 ? "#7FFFD4" : "#4fc3f7";
+    ctx.lineWidth = 1;
+    ctx.fillRect(toX(px - padW / 2), toY(-rowSpacing / 2 - padH / 2), sw(padW), sw(padH));
+    ctx.strokeRect(toX(px - padW / 2), toY(-rowSpacing / 2 - padH / 2), sw(padW), sw(padH));
+
+    // Bottom pad
+    ctx.fillStyle = "#4fc3f7aa";
+    ctx.strokeStyle = "#4fc3f7";
+    ctx.fillRect(toX(px - padW / 2), toY(rowSpacing / 2 - padH / 2), sw(padW), sw(padH));
+    ctx.strokeRect(toX(px - padW / 2), toY(rowSpacing / 2 - padH / 2), sw(padW), sw(padH));
+
+    // Pin numbers
+    if (scale > 6) {
+      ctx.fillStyle = "#ffffff99";
+      ctx.font = `${Math.max(8, scale * 0.4)}px JetBrains Mono, monospace`;
+      ctx.textAlign = "center";
+      ctx.fillText(String(i + 1), toX(px), toY(-rowSpacing / 2 - padH / 2 - 0.2));
+      ctx.fillText(String(pins - i), toX(px), toY(rowSpacing / 2 + padH / 2 + 0.5));
+    }
+  }
+
+  // Package label
+  ctx.fillStyle = "#ffffff88";
+  ctx.font = "bold 11px Inter, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(p.name, cx, cy + 4);
 }
