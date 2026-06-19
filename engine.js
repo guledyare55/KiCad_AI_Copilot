@@ -2006,6 +2006,142 @@ window.FirmwareEngine = {
       "test_harness.c": testC.join("\n"),
       "hardware.yaml": yamlLines.join("\n")
     };
+  },
+
+  // ═══════════════════════════════════════════════════════════
+  // BEGINNER-FRIENDLY ENGINES
+  // ═══════════════════════════════════════════════════════════
+
+  simulateSafety: function(design) {
+    const warnings = [];
+    const oks = [];
+    let has3v3 = false;
+    let hasBattery = false;
+    let batteryType = null;
+    let hasRegulator = false;
+
+    // Detect power setup
+    if (design.components) {
+      for (const comp of design.components) {
+        if (comp.name.includes("3.3V") || comp.name.includes("LDO") || comp.name.includes("Regulator")) hasRegulator = true;
+        if (comp.name.includes("Battery") || comp.name.includes("CR2032") || comp.name.includes("LiPo")) {
+          hasBattery = true;
+          batteryType = comp.name;
+        }
+        if (comp.name.includes("nRF52") || comp.name.includes("STM32") || comp.name.includes("ESP32")) has3v3 = true;
+      }
+    }
+
+    // Rule 1: Voltage Regulators
+    if (has3v3 && hasBattery && batteryType && batteryType.includes("LiPo") && !hasRegulator) {
+      warnings.push({ title: "High Voltage Risk", desc: "You connected a 3.7V-4.2V LiPo battery directly to a 3.3V chip (like nRF52/ESP32) without a voltage regulator! This could fry the chip. Let's add an LDO Regulator."});
+    } else if (has3v3 && hasBattery && batteryType && batteryType.includes("CR2032")) {
+      oks.push({ title: "Power Match", desc: "Your CR2032 battery provides 3.0V, which is perfectly safe for your 3.3V chip. No regulator needed!"});
+    } else if (has3v3 && hasRegulator) {
+      oks.push({ title: "Safe Voltage", desc: "You have a Voltage Regulator protecting your 3.3V chips. They are safe from getting fried!"});
+    }
+
+    // Rule 2: Pull-ups
+    const hasI2C = design.nets && design.nets.some(n => n.name.includes("I2C") || n.name.includes("SDA") || n.name.includes("SCL"));
+    const hasPullups = design.components && design.components.some(c => c.name.includes("Pull-up") || (c.reason && c.reason.includes("pull-up")));
+    if (hasI2C && !hasPullups) {
+      warnings.push({ title: "Communication Error", desc: "You have I2C sensors but no pull-up resistors. The sensors won't be able to 'talk' to the main brain. Let's add two 4.7k resistors."});
+    } else if (hasI2C && hasPullups) {
+      oks.push({ title: "Communication OK", desc: "Your I2C sensors have the required pull-up resistors. They will talk to the brain perfectly."});
+    }
+
+    if (warnings.length === 0) {
+      oks.push({ title: "All Clear!", desc: "Your design looks safe. No explosions detected."});
+    }
+
+    return { warnings, oks };
+  },
+
+  estimateBatteryLife: function(design) {
+    let batteryCapacity = 0; // mAh
+    let activeCurrent = 0; // mA
+    let sleepCurrent = 0; // uA
+    let batteryName = "No Battery";
+
+    // Detect battery
+    if (design.components) {
+      const bat = design.components.find(c => c.name.includes("CR2032") || c.name.includes("LiPo"));
+      if (bat) {
+        if (bat.name.includes("CR2032")) { batteryCapacity = 220; batteryName = "CR2032 Coin Cell"; }
+        if (bat.name.includes("LiPo")) { batteryCapacity = 1000; batteryName = "1000mAh LiPo"; }
+      }
+      
+      // Calculate draw
+      for (const comp of design.components) {
+        if (comp.name.includes("nRF52")) { activeCurrent += 5; sleepCurrent += 1.5; }
+        else if (comp.name.includes("ESP32")) { activeCurrent += 80; sleepCurrent += 10; }
+        else if (comp.name.includes("BME280") || comp.name.includes("SHTC3")) { activeCurrent += 1; sleepCurrent += 2; }
+        else if (comp.name.includes("LED")) { activeCurrent += 2; }
+      }
+    }
+
+    if (batteryCapacity === 0) return null; // Powered by USB or unknown
+
+    // Assuming 1 wakeup per hour for 1 second
+    const activeTimeMs = 1000;
+    const intervalMs = 3600 * 1000;
+    const activeRatio = activeTimeMs / intervalMs;
+    
+    const avgCurrentMa = (activeCurrent * activeRatio) + ((sleepCurrent / 1000) * (1 - activeRatio));
+    const hours = batteryCapacity / avgCurrentMa;
+    const days = hours / 24;
+    const months = days / 30;
+
+    let lifeStr = "";
+    if (months > 1) lifeStr = months.toFixed(1) + " Months";
+    else if (days > 1) lifeStr = days.toFixed(1) + " Days";
+    else lifeStr = hours.toFixed(1) + " Hours";
+
+    return {
+      batteryName,
+      capacity: batteryCapacity + " mAh",
+      activeDraw: activeCurrent.toFixed(1) + " mA",
+      sleepDraw: sleepCurrent.toFixed(1) + " µA",
+      estimatedLife: lifeStr
+    };
+  },
+
+  generateAssemblySteps: function(design) {
+    if (!design.components) return [];
+    
+    // Sort components by "difficulty/height" for assembly
+    // 1. Tiny passives (resistors, caps)
+    // 2. Small ICs (sensors)
+    // 3. Main MCU
+    // 4. Connectors / Batteries (Tall items last)
+    
+    const steps = [];
+    let stepNum = 1;
+
+    const passives = design.components.filter(c => c.type === "passive");
+    if (passives.length > 0) {
+      steps.push({ num: stepNum++, title: "Solder Tiny Passives", desc: `Solder the ${passives.length} tiny resistors and capacitors first. These are the flattest components, so do them before tall things get in your way. Look for labels like R1, C1 on the board.`});
+    }
+
+    const sensors = design.components.filter(c => c.type === "sensor" || c.type === "ic");
+    if (sensors.length > 0) {
+      steps.push({ num: stepNum++, title: "Solder Small Chips", desc: `Next, solder the sensors. Be careful to match the little dot on the chip to the white dot printed on the green board so it isn't backwards!`});
+    }
+
+    const mcus = design.components.filter(c => c.type === "MCU" || c.name.includes("STM32") || c.name.includes("nRF52") || c.name.includes("ESP32"));
+    if (mcus.length > 0) {
+      steps.push({ num: stepNum++, title: "Solder the 'Brain'", desc: `Now solder the main brain chip (${mcus[0].name}). Make sure all the pins line up perfectly before you solder the first pin.`});
+    }
+
+    const bigThings = design.components.filter(c => c.type === "power" || c.type === "connector" || c.name.includes("CR2032") || c.name.includes("USB"));
+    if (bigThings.length > 0) {
+      steps.push({ num: stepNum++, title: "Solder Big Connectors", desc: `Finally, solder the tall items like the battery holder or USB port. Since these are tall, if you did them first, the board would wobble when trying to do the tiny parts!`});
+    }
+
+    steps.push({ num: stepNum++, title: "Clean & Test", desc: `Use some rubbing alcohol (isopropyl) to clean off the sticky flux. Then plug it in and see if it works!`});
+
+    return steps;
   }
 };
+
 

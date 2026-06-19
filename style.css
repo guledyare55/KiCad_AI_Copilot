@@ -1073,3 +1073,50 @@ body {
 .be-side-panel { width: 220px; flex-shrink: 0; background: var(--bg-surface); border-left: 1px solid var(--border-subtle); padding: 14px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
 .be-side-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); }
 .be-prop-group { display: flex; flex-direction: column; gap: 6px; }
+
+/* Beginner Mode Toggle */
+.beginner-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; position: relative; margin-right: 12px; }
+.beginner-toggle input { display: none; }
+.beginner-slider { width: 34px; height: 18px; background: rgba(255,255,255,0.1); border-radius: 18px; position: relative; transition: 0.3s; border: 1px solid var(--border-subtle); }
+.beginner-slider::before { content: ""; position: absolute; left: 2px; top: 2px; width: 12px; height: 12px; background: var(--text-secondary); border-radius: 50%; transition: 0.3s; }
+.beginner-toggle input:checked + .beginner-slider { background: rgba(127,255,212,0.2); border-color: var(--accent-green); }
+.beginner-toggle input:checked + .beginner-slider::before { transform: translateX(16px); background: var(--accent-green); }
+.beginner-label { font-size: 11px; font-weight: 600; color: var(--text-secondary); transition: 0.3s; text-transform: uppercase; letter-spacing: 0.05em; }
+.beginner-toggle input:checked ~ .beginner-label { color: var(--accent-green); text-shadow: 0 0 8px rgba(127,255,212,0.4); }
+
+/* Jargon Translation Highlight */
+.jargon-highlight { border-bottom: 1px dashed var(--accent-green); color: var(--accent-green); cursor: help; transition: 0.2s; position: relative; }
+.jargon-highlight:hover { background: rgba(127,255,212,0.1); border-radius: 2px; }
+
+/* Tab Colors */
+.tab-btn-safety { color: #ff5252; }
+.tab-btn-safety.active { border-bottom-color: #ff5252; color: #ff5252; }
+.tab-btn-power { color: #ffd700; }
+.tab-btn-power.active { border-bottom-color: #ffd700; color: #ffd700; }
+.tab-btn-enclosure { color: #a9a9a9; }
+.tab-btn-enclosure.active { border-bottom-color: #a9a9a9; color: #a9a9a9; }
+.tab-btn-assembly { color: #ffa500; }
+.tab-btn-assembly.active { border-bottom-color: #ffa500; color: #ffa500; }
+
+/* Safety Simulator */
+.safety-layout { display: flex; flex-direction: column; gap: 16px; padding: 12px 0; }
+.safety-warning { display: flex; gap: 12px; background: rgba(255,82,82,0.05); border: 1px solid rgba(255,82,82,0.2); border-left: 3px solid #ff5252; padding: 16px; border-radius: 6px; }
+.safety-ok { display: flex; gap: 12px; background: rgba(127,255,212,0.05); border: 1px solid rgba(127,255,212,0.2); border-left: 3px solid var(--accent-green); padding: 16px; border-radius: 6px; }
+
+/* Power & Battery */
+.power-layout { display: flex; flex-direction: column; gap: 16px; padding: 12px 0; }
+.battery-card { background: rgba(255,255,255,0.02); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.battery-stat-row { display: flex; justify-content: space-between; font-size: 13px; }
+.battery-life-big { font-size: 24px; font-weight: 700; color: #ffd700; text-align: center; margin-top: 8px; }
+
+/* Enclosure Generator */
+.enclosure-layout { display: flex; flex-direction: column; gap: 16px; padding: 12px 0; }
+.enclosure-toolbar { display: flex; justify-content: space-between; }
+
+/* Assembly Guide */
+.assembly-layout { display: flex; flex-direction: column; gap: 16px; padding: 12px 0; }
+.assembly-step { display: flex; gap: 16px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-subtle); padding: 16px; border-radius: 8px; position: relative; }
+.assembly-step-num { width: 28px; height: 28px; border-radius: 50%; background: rgba(255,165,0,0.1); border: 1px solid #ffa500; color: #ffa500; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; flex-shrink: 0; }
+.assembly-step-content { display: flex; flex-direction: column; gap: 6px; }
+.assembly-step-title { font-weight: 600; font-size: 14px; color: var(--text-primary); }
+.assembly-step-desc { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }

@@ -62,6 +62,8 @@ document.addEventListener("DOMContentLoaded", () => {
   initFirmwareGenerator();
   initBlockEditor();
   initNavLinks();
+  initBeginnerToggle();
+  initEnclosureGenerator();
 });
 
 // ─── Mode Toggle ──────────────────────────────────────────
@@ -301,6 +303,11 @@ function renderOutput(output, input) {
   renderThermalHeatmap(output);
   renderSIAdvisor(output);
   renderDFMScorecard(output, State.currentDFMFab || "jlcpcb");
+  renderSafetyCheck(output);
+  renderBatteryLife(output);
+  renderAssemblyGuide(output);
+
+  applyJargonTranslation();
 
   // Reset to overview tab
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
@@ -808,7 +815,196 @@ function initNavLinks() {
   document.getElementById("nav-block")?.addEventListener("click", e => {
     e.preventDefault();
     document.getElementById("block-editor-overlay")?.classList.remove("hidden");
+    renderBE();
   });
+}
+
+// ═══════════════════════════════════════════════════════════
+// BEGINNER-FRIENDLY UI LOGIC
+// ═══════════════════════════════════════════════════════════
+
+const JARGON_DICT = {
+  "Decoupling Capacitor": "Power Filter (Tiny Size)",
+  "Pull-up Resistor": "Signal Helper Resistor",
+  "LDO Regulator": "Power Converter (Safe Voltage)",
+  "I2C": "Communication Wires (Talks to brain)",
+  "SPI": "High-Speed Wires",
+  "0402": "Microscopic Size",
+  "CR2032": "Coin Cell Battery",
+  "nRF52810": "Bluetooth Brain Chip",
+  "STM32G031K8": "Main Brain Chip",
+  "BME280": "Weather Sensor",
+  "SHTC3": "Weather Sensor",
+  "Impedance Controlled": "High-Speed Tuned Wire",
+  "Differential Pair": "Twin Data Wires",
+  "Vias": "Through-Hole Tunnels",
+  "Net": "Electrical Wire"
+};
+
+function initBeginnerToggle() {
+  const toggle = document.getElementById("beginner-mode-toggle");
+  if (!toggle) return;
+  toggle.addEventListener("change", (e) => {
+    State.beginnerMode = e.target.checked;
+    applyJargonTranslation();
+  });
+}
+
+function applyJargonTranslation() {
+  // Remove existing highlights if turned off
+  document.querySelectorAll(".jargon-highlight").forEach(el => {
+    el.outerHTML = el.dataset.original;
+  });
+
+  if (!State.beginnerMode) return;
+
+  // Simple brute-force text replacement on certain areas
+  const areas = [
+    document.getElementById("tab-content-overview"),
+    document.getElementById("tab-content-components"),
+    document.getElementById("tab-content-nets"),
+    document.getElementById("tab-content-placement")
+  ];
+
+  areas.forEach(area => {
+    if (!area) return;
+    let html = area.innerHTML;
+    for (const [jargon, plain] of Object.entries(JARGON_DICT)) {
+      const regex = new RegExp(`(?<!<[^>]*)\\b${jargon}\\b(?![^<]*>)`, "gi");
+      html = html.replace(regex, (match) => {
+        return `<span class="jargon-highlight" data-original="${match}" title="Engineering term: ${match}">${plain}</span>`;
+      });
+    }
+    area.innerHTML = html;
+  });
+}
+
+function renderSafetyCheck(output) {
+  const container = document.getElementById("safety-warnings-container");
+  if (!container) return;
+  container.innerHTML = "";
+
+  const { warnings, oks } = Engine.simulateSafety(output);
+
+  warnings.forEach(w => {
+    const el = document.createElement("div");
+    el.className = "safety-warning";
+    el.innerHTML = `
+      <div style="font-size:24px">⚠️</div>
+      <div>
+        <strong style="color:#ff5252;display:block;margin-bottom:4px">${w.title}</strong>
+        <span style="color:var(--text-secondary);font-size:13px;line-height:1.4">${w.desc}</span>
+      </div>
+    `;
+    container.appendChild(el);
+  });
+
+  oks.forEach(o => {
+    const el = document.createElement("div");
+    el.className = "safety-ok";
+    el.innerHTML = `
+      <div style="font-size:24px">✅</div>
+      <div>
+        <strong style="color:var(--accent-green);display:block;margin-bottom:4px">${o.title}</strong>
+        <span style="color:var(--text-secondary);font-size:13px;line-height:1.4">${o.desc}</span>
+      </div>
+    `;
+    container.appendChild(el);
+  });
+}
+
+function renderBatteryLife(output) {
+  const container = document.getElementById("battery-stats-container");
+  if (!container) return;
+  container.innerHTML = "";
+
+  const stats = Engine.estimateBatteryLife(output);
+  if (!stats) {
+    container.innerHTML = `<div class="battery-card"><div class="battery-stat-row">No battery detected. Powered by USB or External Source.</div></div>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="battery-card">
+      <div class="battery-stat-row"><span>Power Source:</span> <strong>${stats.batteryName}</strong></div>
+      <div class="battery-stat-row"><span>Total Capacity:</span> <strong>${stats.capacity}</strong></div>
+      <div class="battery-stat-row"><span>Active Draw:</span> <strong>${stats.activeDraw}</strong></div>
+      <div class="battery-stat-row"><span>Sleep Draw:</span> <strong>${stats.sleepDraw}</strong></div>
+      <div style="margin-top:10px; border-top:1px solid var(--border-subtle); padding-top:10px;">
+        <div style="text-align:center; font-size:12px; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.1em">Estimated Battery Life</div>
+        <div class="battery-life-big">${stats.estimatedLife}</div>
+        <div style="text-align:center; font-size:11px; color:var(--text-muted); margin-top:4px">(Assuming 1s active per hour)</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderAssemblyGuide(output) {
+  const container = document.getElementById("assembly-steps-container");
+  if (!container) return;
+  container.innerHTML = "";
+
+  const steps = Engine.generateAssemblySteps(output);
+  if (steps.length === 0) {
+    container.innerHTML = `<div style="color:var(--text-muted)">No components to assemble.</div>`;
+    return;
+  }
+
+  steps.forEach(step => {
+    const el = document.createElement("div");
+    el.className = "assembly-step";
+    el.innerHTML = `
+      <div class="assembly-step-num">${step.num}</div>
+      <div class="assembly-step-content">
+        <div class="assembly-step-title">${step.title}</div>
+        <div class="assembly-step-desc">${step.desc}</div>
+      </div>
+    `;
+    container.appendChild(el);
+  });
+}
+
+function initEnclosureGenerator() {
+  const btn = document.getElementById("btn-gen-enclosure");
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    const viewer = document.getElementById("enclosure-code-viewer");
+    viewer.textContent = "Generating 3D Enclosure via python script...";
+    
+    // In reality this would call the python script via backend IPC
+    // For the UI, we simulate it here.
+    setTimeout(() => {
+      let width = 40;
+      let length = 60;
+      if (State.constraints.size === "small") { width=30; length=50; }
+      if (State.constraints.size === "smallest") { width=20; length=35; }
+      
+      const scad = `// Auto-generated 3D Enclosure for KiCad AI Copilot
+// Use OpenSCAD (openscad.org) to render this to an STL file.
+
+width = ${width};
+length = ${length};
+height = 15;
+wall = 2;
+
+difference() {
+  // Main body
+  cube([width + wall*2, length + wall*2, height], center=true);
+  
+  // Hollow interior
+  translate([0, 0, wall])
+    cube([width, length, height], center=true);
+    
+  // Cutout for USB / Connectors
+  translate([0, length/2, 0])
+    cube([12, 10, 8], center=true);
+}
+`;
+      viewer.textContent = scad;
+      showToast("3D Enclosure generated!", "success");
+    }, 800);
+  });
+  
   document.getElementById("be-close-btn")?.addEventListener("click", () => {
     document.getElementById("block-editor-overlay")?.classList.add("hidden");
   });

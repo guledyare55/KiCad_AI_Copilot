@@ -48,6 +48,11 @@
         <a href="#" class="nav-link" id="nav-docs">Docs</a>
       </nav>
       <div class="header-badges">
+        <label class="beginner-toggle" title="Translate engineering jargon to plain English">
+          <input type="checkbox" id="beginner-mode-toggle">
+          <span class="beginner-slider"></span>
+          <span class="beginner-label">🪄 Beginner Mode</span>
+        </label>
         <span class="badge badge-green">KiCad v7+</span>
         <span class="badge badge-blue">JLCPCB Ready</span>
       </div>
@@ -287,6 +292,10 @@
           <button class="tab-btn tab-btn-blue" data-tab="si" id="tab-si">📡 SI</button>
           <button class="tab-btn tab-btn-fab" data-tab="dfm" id="tab-dfm">🏭 DFM</button>
           <button class="tab-btn tab-btn-fw" data-tab="firmware" id="tab-firmware">🧪 Firmware</button>
+          <button class="tab-btn tab-btn-safety" data-tab="safety" id="tab-safety">💥 Safety</button>
+          <button class="tab-btn tab-btn-power" data-tab="power" id="tab-power">🔋 Power</button>
+          <button class="tab-btn tab-btn-enclosure" data-tab="enclosure" id="tab-enclosure">📦 Enclosure</button>
+          <button class="tab-btn tab-btn-assembly" data-tab="assembly" id="tab-assembly">🛠 Assembly</button>
           <button class="tab-btn" data-tab="raw" id="tab-raw">Raw JSON</button>
         </div>
 
@@ -407,6 +416,42 @@
             <div class="fw-code-viewer-wrap">
               <pre class="fw-code-viewer" id="fw-code-viewer"><!-- Click "Generate Stubs" --></pre>
             </div>
+          </div>
+        </div>
+
+        <!-- Tab: Safety Simulator -->
+        <div class="tab-content" id="tab-content-safety">
+          <div class="safety-layout">
+            <h3 class="section-title">Will it Blow Up? Simulator</h3>
+            <div id="safety-warnings-container" class="safety-warnings"></div>
+          </div>
+        </div>
+
+        <!-- Tab: Power & Battery -->
+        <div class="tab-content" id="tab-content-power">
+          <div class="power-layout">
+            <h3 class="section-title">Battery Life Estimator</h3>
+            <div id="battery-stats-container" class="battery-stats"></div>
+          </div>
+        </div>
+
+        <!-- Tab: 3D Enclosure -->
+        <div class="tab-content" id="tab-content-enclosure">
+          <div class="enclosure-layout">
+            <div class="enclosure-toolbar">
+              <button class="action-btn action-btn-primary" id="btn-gen-enclosure">Generate 3D Case (.scad)</button>
+            </div>
+            <div class="fw-code-viewer-wrap">
+              <pre class="fw-code-viewer" id="enclosure-code-viewer"><!-- Click "Generate 3D Case" --></pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab: Assembly Guide -->
+        <div class="tab-content" id="tab-content-assembly">
+          <div class="assembly-layout">
+            <h3 class="section-title">Interactive Soldering Guide</h3>
+            <div id="assembly-steps-container" class="assembly-steps"></div>
           </div>
         </div>
 
