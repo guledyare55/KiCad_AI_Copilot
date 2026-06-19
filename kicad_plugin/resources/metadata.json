@@ -8,18 +8,18 @@
   "author": {
     "name": "KiCad AI Copilot",
     "contact": {
-      "web": "https://github.com/kicad-ai-copilot"
+      "web": "https://github.com/guledyare55/KiCad_AI_Copilot"
     }
   },
   "maintainer": {
     "name": "KiCad AI Copilot",
     "contact": {
-      "web": "https://github.com/kicad-ai-copilot"
+      "web": "https://github.com/guledyare55/KiCad_AI_Copilot"
     }
   },
   "license": "MIT",
   "resources": {
-    "homepage": "https://github.com/kicad-ai-copilot"
+    "homepage": "https://github.com/guledyare55/KiCad_AI_Copilot"
   },
   "tags": ["eda", "ai", "automation", "schematic", "pcb", "ble", "lora", "bom"],
   "versions": [
