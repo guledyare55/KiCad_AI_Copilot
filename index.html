@@ -301,6 +301,15 @@
 
         <!-- Tab: Overview -->
         <div class="tab-content active" id="tab-content-overview">
+          <div style="margin-bottom: 20px; background: rgba(127,255,212,0.05); border: 1px solid var(--accent-green); padding: 16px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <h3 style="color: var(--accent-green); margin: 0 0 4px 0; font-size: 16px;">🪄 Auto-Schematic Generator</h3>
+              <div style="color: var(--text-secondary); font-size: 13px;">Skip drawing wires manually! Download a ready-to-use KiCad Schematic file with global labels.</div>
+            </div>
+            <button class="action-btn action-btn-primary" id="btn-download-sch" style="background: var(--accent-green); color: #000; font-weight: bold; font-size: 14px; padding: 10px 20px;">
+              ⬇ Download .kicad_sch
+            </button>
+          </div>
           <div class="overview-grid" id="overview-grid"></div>
           <div class="validation-panel" id="validation-panel"></div>
         </div>

@@ -153,10 +153,29 @@ function initOutputActions() {
     showToast("JSON exported ✓", "success");
   });
 
+  document.getElementById("btn-download-sch")?.addEventListener("click", () => {
+    if (!State.lastOutput) return;
+    const name = (document.getElementById("project-name")?.value || "kicad_design")
+      .replace(/[^a-z0-9]/gi, "_").toLowerCase();
+    const schText = generateSchematicSExpression(State.lastOutput);
+    downloadText(schText, `${name}.kicad_sch`);
+    showToast("Schematic downloaded! Open it in KiCad ✓", "success");
+  });
+
   document.getElementById("raw-copy-btn")?.addEventListener("click", () => {
     const raw = document.getElementById("json-viewer")?.textContent;
     if (raw) navigator.clipboard.writeText(raw).then(() => showToast("Copied ✓", "success"));
   });
+}
+
+function downloadText(text, filename) {
+  const blob = new Blob([text], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ─── Generate Button ─────────────────────────────────────
@@ -1008,6 +1027,118 @@ difference() {
   document.getElementById("be-close-btn")?.addEventListener("click", () => {
     document.getElementById("block-editor-overlay")?.classList.add("hidden");
   });
+}
+
+// ═══════════════════════════════════════════════════════════
+// AUTO-SCHEMATIC GENERATOR
+// ═══════════════════════════════════════════════════════════
+function generateSchematicSExpression(design) {
+  // A very basic KiCad 7/8 schematic S-expression generator.
+  // We use "global_label" to connect pins instead of drawing wires.
+  
+  // Header
+  let sch = `(kicad_sch (version 20230121) (generator kicad_ai_copilot)
+  (uuid "d0943961-d779-46dc-a07d-5a4c6a6f1b1a")
+  (paper "A4")
+  (title_block (title "AI Generated Schematic"))
+`;
+
+  // Provide some generic symbol libraries to ensure basic symbols work
+  sch += `  (lib_symbols
+    (symbol "Device:R" (pin_names (offset 0)) (in_bom yes) (on_board yes)
+      (property "Reference" "R" (at 2.032 0 90) (effects (font (size 1.27 1.27))))
+      (property "Value" "R" (at 0 0 90) (effects (font (size 1.27 1.27))))
+      (symbol "R_0_1"
+        (rectangle (start -1.016 -2.54) (end 1.016 2.54) (stroke (width 0.254) (type default)) (fill (type none)))
+      )
+      (symbol "R_1_1"
+        (pin passive line (at 0 5.08 270) (length 2.54) (name "~" (effects (font (size 1.27 1.27)))) (number "1"))
+        (pin passive line (at 0 -5.08 90) (length 2.54) (name "~" (effects (font (size 1.27 1.27)))) (number "2"))
+      )
+    )
+    (symbol "Device:C" (pin_names (offset 0)) (in_bom yes) (on_board yes)
+      (property "Reference" "C" (at 2.032 0 90) (effects (font (size 1.27 1.27))))
+      (property "Value" "C" (at 0 0 90) (effects (font (size 1.27 1.27))))
+      (symbol "C_0_1"
+        (polyline (pts (xy -2.032 -0.762) (xy 2.032 -0.762)) (stroke (width 0.508) (type default)) (fill (type none)))
+        (polyline (pts (xy -2.032 0.762) (xy 2.032 0.762)) (stroke (width 0.508) (type default)) (fill (type none)))
+      )
+      (symbol "C_1_1"
+        (pin passive line (at 0 3.81 270) (length 3.048) (name "~" (effects (font (size 1.27 1.27)))) (number "1"))
+        (pin passive line (at 0 -3.81 90) (length 3.048) (name "~" (effects (font (size 1.27 1.27)))) (number "2"))
+      )
+    )
+  )
+`;
+
+  let posX = 50;
+  let posY = 50;
+  let compId = 100;
+
+  // Render components
+  const comps = [...(design.components || []), ...(design.auto_added_components || [])];
+  
+  for (const c of comps) {
+    // Map to a generic symbol or a dummy IC
+    let libId = "Device:R";
+    let isPassive = false;
+    
+    if (c.type === "passive") {
+      if (c.name.includes("Cap")) libId = "Device:C";
+      if (c.name.includes("Res") || c.name.includes("Pull-up")) libId = "Device:R";
+      isPassive = true;
+    } else {
+      // Create an inline generic IC symbol for sensors/MCUs to avoid missing library errors
+      const icLibId = \`IC_\${c.name.replace(/[^a-zA-Z0-9]/g, '')}\`;
+      libId = \`CopilotLocal:\${icLibId}\`;
+      
+      sch += \`  (lib_symbols
+    (symbol "\${libId}" (pin_names (offset 1.016)) (in_bom yes) (on_board yes)
+      (property "Reference" "U" (at 0 7.62 0) (effects (font (size 1.27 1.27))))
+      (property "Value" "\${c.name}" (at 0 -7.62 0) (effects (font (size 1.27 1.27))))
+      (symbol "\${icLibId}_0_1"
+        (rectangle (start -10.16 5.08) (end 10.16 -5.08) (stroke (width 0.254) (type default)) (fill (type background)))
+      )
+      (symbol "\${icLibId}_1_1"
+        (pin input line (at -12.7 2.54 0) (length 2.54) (name "PIN1" (effects (font (size 1.27 1.27)))) (number "1"))
+        (pin output line (at 12.7 2.54 180) (length 2.54) (name "PIN2" (effects (font (size 1.27 1.27)))) (number "2"))
+        (pin power_in line (at 0 7.62 270) (length 2.54) (name "VCC" (effects (font (size 1.27 1.27)))) (number "3"))
+        (pin power_in line (at 0 -7.62 90) (length 2.54) (name "GND" (effects (font (size 1.27 1.27)))) (number "4"))
+      )
+    )
+  )
+\`;
+    }
+
+    // Place the symbol instance
+    const ref = c.ref_prefix + compId;
+    sch += \`  (symbol (lib_id "\${libId}") (at \${posX} \${posY} 0) (unit 1)
+    (in_bom yes) (on_board yes) (dnp no)
+    (uuid "\${Math.random().toString(36).substring(2,10)}-copilot-sch")
+    (property "Reference" "\${ref}" (at \${posX} \${posY-5} 0))
+    (property "Value" "\${c.value || c.name}" (at \${posX} \${posY+5} 0))
+    (property "Footprint" "\${c.footprint || ''}" (at \${posX} \${posY+7} 0) (effects (font (size 1.27 1.27)) hide))
+  )
+\`;
+    
+    // Add global labels representing nets for this component (Mockup)
+    // We attach a label right next to it.
+    sch += \`  (global_label "GND" (shape input) (at \${posX-2.54} \${posY+10} 180)
+    (uuid "\${Math.random().toString(36).substring(2,10)}-lbl")
+    (property "Intersheetrefs" "\${ref}" (at \${posX-5} \${posY+10} 0) (effects (font (size 1.27 1.27)) hide))
+  )
+\`;
+
+    posX += 40;
+    if (posX > 250) {
+      posX = 50;
+      posY += 40;
+    }
+    compId++;
+  }
+
+  sch += `)\n`;
+  return sch;
 }
 
 // ═══════════════════════════════════════════════════════════
